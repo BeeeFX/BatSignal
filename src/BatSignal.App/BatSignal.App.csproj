@@ -12,9 +12,15 @@
     <AssemblyName>BatSignal</AssemblyName>
     <RootNamespace>BatSignal.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\icon.png" LogicalName="BatSignal.icon.png" />
+    <InternalsVisibleTo Include="BatSignal.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\BatSignal.Core\BatSignal.Core.csproj" />

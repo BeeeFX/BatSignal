@@ -438,6 +438,12 @@
                 <TextBlock Text="Start with Windows" VerticalAlignment="Center" />
                 <CheckBox x:Name="AutostartBox" Style="{StaticResource Switch}" HorizontalAlignment="Right" Click="Autostart_Click" />
               </Grid>
+              <Border Height="1" Background="{DynamicResource Bs.Border}" />
+              <Grid Margin="0,6">
+                <TextBlock Text="Notifications" VerticalAlignment="Center" />
+                <Button Style="{StaticResource TextButton}" Content="Send a test alert" HorizontalAlignment="Right"
+                        Background="{DynamicResource Bs.Background}" Click="TestAlert_Click" />
+              </Grid>
             </StackPanel>
           </Border>
         </StackPanel>

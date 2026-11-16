@@ -119,9 +119,31 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
 
     BatteryInfo ReadUnifiedBattery()
     {
-        var caps = Call(FeatureUnifiedBattery, 0);
+        var info = ParseUnifiedBattery(Call(FeatureUnifiedBattery, 0), Call(FeatureUnifiedBattery, 1));
+        BatteryFeatureIndex = FeatureIndex(FeatureUnifiedBattery);
+        return info;
+    }
+
+    BatteryInfo ReadBatteryStatus()
+    {
+        var info = ParseBatteryStatus(Call(FeatureBatteryStatus, 0));
+        BatteryFeatureIndex = FeatureIndex(FeatureBatteryStatus);
+        return info;
+    }
+
+    BatteryInfo ReadBatteryVoltage()
+    {
+        var info = ParseBatteryVoltage(Call(FeatureBatteryVoltage, 0));
+        BatteryFeatureIndex = FeatureIndex(FeatureBatteryVoltage);
+        return info;
+    }
+
+    // Reply parsers, kept pure so they can be unit-tested without hardware ---------------------
+
+    /// <summary>0x1004: GetCapabilities reply + GetStatus reply.</summary>
+    public static BatteryInfo ParseUnifiedBattery(ReadOnlySpan<byte> caps, ReadOnlySpan<byte> s)
+    {
         bool hasPercent = (caps[1] & 0x02) != 0;
-        var s = Call(FeatureUnifiedBattery, 1);
         var level = (s[1] & 0x08) != 0 ? BatteryLevel.Full
                   : (s[1] & 0x04) != 0 ? BatteryLevel.Good
                   : (s[1] & 0x02) != 0 ? BatteryLevel.Low
@@ -135,13 +157,12 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
             4 => ChargeState.Error,
             _ => ChargeState.Unknown,
         };
-        BatteryFeatureIndex = FeatureIndex(FeatureUnifiedBattery);
         return new BatteryInfo(hasPercent ? s[0] : null, level, state, null, false, false, "0x1004 unified battery");
     }
 
-    BatteryInfo ReadBatteryStatus()
+    /// <summary>0x1000: GetBatteryLevelStatus reply (level, next level, status).</summary>
+    public static BatteryInfo ParseBatteryStatus(ReadOnlySpan<byte> s)
     {
-        var s = Call(FeatureBatteryStatus, 0);
         var state = s[2] switch
         {
             0 => ChargeState.Discharging,
@@ -150,15 +171,14 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
             _ => ChargeState.Error,
         };
         int pct = s[0], next = s[1];
-        BatteryFeatureIndex = FeatureIndex(FeatureBatteryStatus);
         // Devices like MX Keys report 100/50/20/5: "next level" is far below the current one.
         bool stepped = next > 0 && pct - next > 10;
         return new BatteryInfo(pct, LevelFromPercent(pct), state, null, false, stepped, "0x1000 battery status");
     }
 
-    BatteryInfo ReadBatteryVoltage()
+    /// <summary>0x1001: GetBatteryVoltage reply (millivolts big-endian, flags).</summary>
+    public static BatteryInfo ParseBatteryVoltage(ReadOnlySpan<byte> s)
     {
-        var s = Call(FeatureBatteryVoltage, 0);
         int mv = (s[0] << 8) | s[1];
         byte flags = s[2];
         var state = ChargeState.Discharging;
@@ -173,10 +193,8 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
             };
         }
         int pct = state == ChargeState.Full ? 100 : EstimatePercent(mv);
-        BatteryFeatureIndex = FeatureIndex(FeatureBatteryVoltage);
         return new BatteryInfo(pct, LevelFromPercent(pct), state, mv, true, false, "0x1001 battery voltage");
     }
-
     static BatteryLevel LevelFromPercent(int pct) =>
         pct >= 90 ? BatteryLevel.Full : pct >= 30 ? BatteryLevel.Good : pct >= 10 ? BatteryLevel.Low : BatteryLevel.Critical;
 

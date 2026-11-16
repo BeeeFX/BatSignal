@@ -41,18 +41,20 @@ static class Program
         var scenarios = new Dictionary<string, List<DeviceSnapshot>>
         {
             ["real"] = real.Count > 0 ? real.ToList() : [mouse, keyboard],
+            ["remaining"] = [mouse with { TimeRemaining = TimeSpan.FromDays(2.4) }, keyboard],
             ["states"] =
             [
                 mouse with { Battery = mouse.Battery! with { Percent = 12, State = ChargeState.Discharging } },
                 keyboard with { Battery = keyboard.Battery! with { Percent = 20, State = ChargeState.Charging } },
                 Fake("Gamepad", DeviceKind.Gamepad, 88) with { Online = false, LastSeen = DateTimeOffset.Now.AddHours(-3) },
+                Fake("DualSense", DeviceKind.Gamepad, 45) with { Connection = "USB", TimeRemaining = TimeSpan.FromHours(5) },
                 Fake("Work mouse", DeviceKind.Mouse, 64) with { Connection = "Bluetooth", OriginalName = "LOGI M240", Label = "M240", Battery = new BatteryInfo(64, BatteryLevel.Good, ChargeState.Unknown, null, false, false, "preview") },
             ],
         };
 
         foreach (var (name, devices) in scenarios)
         {
-            using var widget = new TaskbarWidget();
+            using var widget = new TaskbarWidget(IntPtr.Zero, true, null, null);
             widget.SetItems(devices, 15);
             foreach (var hover in new[] { false, true })
             {

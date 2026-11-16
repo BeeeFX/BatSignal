@@ -25,4 +25,7 @@ public sealed record DeviceSnapshot
 
     /// <summary>Short text (up to 4 characters) shown instead of an icon.</summary>
     [JsonIgnore] public string? Label { get; init; }
+
+    /// <summary>Estimated time until empty, from the battery history.</summary>
+    [JsonIgnore] public TimeSpan? TimeRemaining { get; init; }
 }

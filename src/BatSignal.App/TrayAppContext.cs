@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Win32;
 using BatSignal.Core.Hidpp;
 using BatSignal.Core.Monitoring;
@@ -5,24 +6,25 @@ using BatSignal.Core.Monitoring;
 namespace BatSignal.App;
 
 /// <summary>
-/// Wires everything together: the device monitor feeds the taskbar widget (or the tray icons
-/// when the widget can't attach), the main window, and low-battery alerts.
+/// Wires everything together: the device monitor feeds the taskbar widgets (or tray icons when
+/// the main taskbar's widget can't show), the main panel, battery history and low-battery alerts.
 /// </summary>
 internal sealed class TrayAppContext : ApplicationContext
 {
+    static string HistoryPath => Path.Combine(Settings.Folder, "history.json");
+
     readonly Settings _settings = Settings.Load();
+    readonly BatteryHistory _history = LoadHistory();
     readonly Control _ui = new();
     readonly DeviceMonitor _monitor;
-    readonly TaskbarWidget _widget = new();
+    readonly TaskbarWidgets _widgets = new();
     readonly TrayIcons _tray = new();
     readonly FlyoutWindow _flyout;
-    readonly NotifyIcon _alertIcon = new();
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     readonly HashSet<string> _alerted = [];
     IReadOnlyList<DeviceSnapshot> _raw = [];
     IReadOnlyList<DeviceSnapshot> _devices = [];
     DateTimeOffset? _updated;
-    int _ticks;
 
     public TrayAppContext()
     {
@@ -32,15 +34,14 @@ internal sealed class TrayAppContext : ApplicationContext
         _flyout.RefreshRequested += () => _monitor!.RefreshNow();
         _flyout.ExitRequested += ExitThread;
         _flyout.SettingsChanged += OnSettingsChanged;
+        _flyout.TestAlertRequested += () => Notify("Test alert", "Low-battery alerts look like this.", null);
 
-        _widget.LeftClick += () => ToggleFlyout(_widget.ScreenBounds, settingsPage: false);
-        _widget.RightClick += () => ToggleFlyout(_widget.ScreenBounds, settingsPage: true);
+        _widgets.LeftClick += anchor => ToggleFlyout(anchor, settingsPage: false);
+        _widgets.RightClick += anchor => ToggleFlyout(anchor, settingsPage: true);
         _tray.LeftClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)), settingsPage: false);
         _tray.RightClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)), settingsPage: true);
-        _alertIcon.MouseClick += (_, _) => ToggleFlyout(new Rectangle(Cursor.Position, new Size(1, 1)), settingsPage: false);
 
         _raw = _settings.LastKnownDevices.Select(d => d with { Online = false }).ToList();
-        _devices = Customization.Apply(_raw, _settings);
         _monitor = new DeviceMonitor(_settings.LastKnownDevices);
         _monitor.Log += Logger.Write;
         _monitor.Updated += list => _ui.BeginInvoke(() => OnUpdated(list));
@@ -48,7 +49,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _timer.Tick += (_, _) => OnTick();
         SystemEvents.UserPreferenceChanged += OnThemeChanged;
 
-        Logger.Write("Started");
+        Logger.Write($"Started {Application.ProductVersion}");
         ApplyView();
         _timer.Start();
         _monitor.Start();
@@ -60,6 +61,11 @@ internal sealed class TrayAppContext : ApplicationContext
         _updated = DateTimeOffset.Now;
         _settings.LastKnownDevices = raw.ToList();
         _settings.Save();
+
+        bool changed = false;
+        foreach (var d in raw) changed |= _history.Record(d, _updated.Value);
+        if (changed) SaveHistory();
+
         ApplyView();
         CheckAlerts();
     }
@@ -74,40 +80,44 @@ internal sealed class TrayAppContext : ApplicationContext
 
     IReadOnlyList<DeviceSnapshot> Visible => _devices.Where(d => !_settings.HiddenDevices.Contains(d.Id)).ToList();
 
-    /// <summary>Shows the devices in the widget when it's attached, otherwise in tray icons.</summary>
+    /// <summary>Recomputes what to show, then shows it in the widgets, or in tray icons when the main widget can't show.</summary>
     void ApplyView()
     {
-        _devices = Customization.Apply(_raw, _settings);
-        bool useWidget = _settings.Mode == DisplayMode.Taskbar && (_widget.IsAttached || _widget.TryAttach());
-        if (useWidget)
+        var now = DateTimeOffset.Now;
+        _devices = Customization.Apply(_raw, _settings)
+            .Select(d => d with { TimeRemaining = Remaining(d, now) })
+            .ToList();
+
+        bool useTray = true;
+        if (_settings.Mode == DisplayMode.Taskbar)
         {
-            _tray.Clear();
-            _widget.SetItems(Visible, _settings.LowBatteryThreshold);
+            _widgets.SetItems(Visible, _settings.LowBatteryThreshold);
+            _widgets.Sync();
+            useTray = !_widgets.PrimaryShowing;
         }
         else
         {
-            _widget.Detach();
-            _tray.Update(Visible, _settings.LowBatteryThreshold);
+            _widgets.DetachAll();
         }
+
+        if (useTray) _tray.Update(Visible, _settings.LowBatteryThreshold);
+        else _tray.Clear();
         _flyout.SetData(_devices, _updated);
     }
 
+    TimeSpan? Remaining(DeviceSnapshot d, DateTimeOffset now) =>
+        d.Battery is { Percent: int p, State: ChargeState.Discharging or ChargeState.Unknown, IsApproximate: false }
+            ? _history.Estimate(d.Id, p, now)
+            : null;
+
     void OnTick()
     {
-        _ticks++;
         if (_settings.Mode != DisplayMode.Taskbar) return;
-        if (_widget.IsAttached)
+        _widgets.Sync();
+        // The main widget appeared, disappeared or stepped aside: switch between widget and tray icons.
+        if (_widgets.PrimaryShowing == _tray.IsShown)
         {
-            _widget.Tick();
-        }
-        else if (_ticks % 5 == 0 && _widget.TryAttach())
-        {
-            Logger.Write("Taskbar widget (re)attached, hiding tray icons");
-            ApplyView();
-        }
-        else if (!_tray.IsShown)
-        {
-            Logger.Write("Taskbar widget lost, falling back to tray icons");
+            Logger.Write(_widgets.PrimaryShowing ? "Taskbar widget showing, hiding tray icons" : "Taskbar widget unavailable, using tray icons");
             ApplyView();
         }
     }
@@ -140,40 +150,50 @@ internal sealed class TrayAppContext : ApplicationContext
             if (!low && (charging || pct is null || pct > threshold + 5))
                 _alerted.Remove(d.Id); // re-arm once it has been charged
             else if (low && d.Online && !_settings.HiddenDevices.Contains(d.Id) && _alerted.Add(d.Id))
-                ShowAlert(d);
+            {
+                Logger.Write($"Low battery alert: {d.Name} {DeviceText.Percent(d)}");
+                var left = d.TimeRemaining is { } t ? $"{DeviceText.Remaining(t)}. " : "";
+                Notify($"{d.Name} is at {DeviceText.Percent(d, showApprox: true)}", $"{left}Plug it in soon.", d.Id);
+            }
         }
-        UpdateAlertIcon();
     }
 
-    void ShowAlert(DeviceSnapshot d)
+    /// <summary>A Windows notification; falls back to a tray balloon if notifications are unavailable.</summary>
+    void Notify(string title, string body, string? deviceId)
     {
-        Logger.Write($"Low battery alert: {d.Name} {DeviceText.Percent(d)}");
-        // In tray mode use the device's own icon; in taskbar mode a temporary alert icon carries the toast.
-        var icon = _tray.IconFor(d.Id);
-        if (icon is null)
-        {
-            UpdateAlertIcon(force: d);
-            icon = _alertIcon;
-        }
-        icon.ShowBalloonTip(10_000, $"{d.Name} is at {DeviceText.Percent(d, showApprox: true)}", "Plug it in soon.", ToolTipIcon.Warning);
+        if (Toasts.Show(title, body)) return;
+        var icon = deviceId is null ? null : _tray.IconFor(deviceId);
+        icon?.ShowBalloonTip(10_000, title, body, ToolTipIcon.Warning);
     }
 
-    /// <summary>While a device is low and the widget is in use, a red tray icon stays as a reminder.</summary>
-    void UpdateAlertIcon(DeviceSnapshot? force = null)
+    // History persistence --------------------------------------------------------------------
+
+    static BatteryHistory LoadHistory()
     {
-        var low = force ?? _devices.FirstOrDefault(d => _alerted.Contains(d.Id));
-        if (low is null || _tray.IsShown)
+        try
         {
-            _alertIcon.Visible = false;
-            return;
+            if (File.Exists(HistoryPath))
+                return JsonSerializer.Deserialize<BatteryHistory>(File.ReadAllText(HistoryPath)) ?? new BatteryHistory();
         }
-        var palette = Theme.Current;
-        using var bmp = TrayIcons.Render(IconCatalog.Shape(low), DeviceText.EffectivePercent(low)?.ToString() ?? "!", palette.Low, true);
-        var old = _alertIcon.Icon;
-        _alertIcon.Icon = Icon.FromHandle(bmp.GetHicon());
-        if (old is not null) { Native.DestroyIcon(old.Handle); old.Dispose(); }
-        _alertIcon.Text = DeviceText.Tooltip(low);
-        _alertIcon.Visible = true;
+        catch (Exception e)
+        {
+            Logger.Write($"Could not read battery history: {e.Message}");
+        }
+        return new BatteryHistory();
+    }
+
+    void SaveHistory()
+    {
+        try
+        {
+            _history.Forget(_raw.Select(d => d.Id));
+            Directory.CreateDirectory(Settings.Folder);
+            File.WriteAllText(HistoryPath, JsonSerializer.Serialize(_history));
+        }
+        catch (Exception e)
+        {
+            Logger.Write($"Could not save battery history: {e.Message}");
+        }
     }
 
     protected override void ExitThreadCore()
@@ -182,10 +202,8 @@ internal sealed class TrayAppContext : ApplicationContext
         _timer.Stop();
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         _monitor.Dispose();
-        _widget.Dispose();
+        _widgets.Dispose();
         _tray.Dispose();
-        _alertIcon.Visible = false;
-        _alertIcon.Dispose();
         _flyout.Close();
         _settings.Save();
         base.ExitThreadCore();

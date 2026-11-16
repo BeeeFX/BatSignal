@@ -7,45 +7,66 @@ using static BatSignal.App.Native;
 namespace BatSignal.App;
 
 /// <summary>
-/// A small per-pixel-alpha window placed inside the Windows taskbar (child of Shell_TrayWnd),
-/// just left of the notification area. This is not an official extension point, so every
-/// tick we check it is still attached and in place; callers fall back to tray icons when
-/// <see cref="IsAttached"/> is false.
+/// A small per-pixel-alpha window placed inside one Windows taskbar (child of Shell_TrayWnd or
+/// Shell_SecondaryTrayWnd), just left of the tray or clock. This is not an official extension
+/// point, so every tick we check it is still attached and in place. It hides itself when the
+/// taskbar's app buttons would run under it (<see cref="IsBlocked"/>).
 /// </summary>
 internal sealed class TaskbarWidget : NativeWindow, IDisposable
 {
-    IntPtr _taskbar;
+    readonly TaskbarLayout? _layout;
+    readonly WidgetTooltip? _tooltip;
     IReadOnlyList<DeviceSnapshot> _items = [];
+    readonly List<(float X0, float X1, DeviceSnapshot Device)> _hits = [];
     int _threshold = 15;
     bool _hover;
+    int _hoverIndex = -1;
     uint _dpi = 96;
     Rectangle _placed; // in taskbar client coordinates
     Size _size;
+    long _lastAttempt = -10_000;
 
-    public event Action? LeftClick;
-    public event Action? RightClick;
+    public TaskbarWidget(IntPtr taskbar, bool primary, TaskbarLayout? layout, WidgetTooltip? tooltip)
+    {
+        Taskbar = taskbar;
+        IsPrimary = primary;
+        _layout = layout;
+        _tooltip = tooltip;
+    }
 
-    public bool IsAttached => Handle != IntPtr.Zero && IsWindow(_taskbar);
+    public IntPtr Taskbar { get; }
+    public bool IsPrimary { get; }
+
+    public event Action<TaskbarWidget>? LeftClick;
+    public event Action<TaskbarWidget>? RightClick;
+
+    public bool IsAttached => Handle != IntPtr.Zero && IsWindow(Taskbar);
+
+    /// <summary>Hidden because the taskbar's app buttons reach the widget's spot.</summary>
+    public bool IsBlocked { get; private set; }
+
+    public bool IsShowing => IsAttached && !IsBlocked;
 
     /// <summary>Screen rectangle of the widget, for anchoring the flyout.</summary>
     public Rectangle ScreenBounds => GetWindowRect(Handle, out var r) ? r.ToRectangle() : Rectangle.Empty;
 
+    /// <summary>Creates the window inside the taskbar. Retries at most every 5 seconds.</summary>
     public bool TryAttach()
     {
         if (IsAttached) return true;
+        if (Environment.TickCount64 - _lastAttempt < 5000) return false;
+        _lastAttempt = Environment.TickCount64;
         Detach();
         try
         {
-            var taskbar = FindWindow("Shell_TrayWnd", null);
-            if (taskbar == IntPtr.Zero || !GetWindowRect(taskbar, out var tb) || tb.Width < tb.Height)
-                return false; // no taskbar, or a vertical one: tray icons work better there
+            if (!IsWindow(Taskbar) || !GetWindowRect(Taskbar, out var tb) || tb.Width < tb.Height)
+                return false; // gone, or a vertical taskbar: tray icons work better there
 
-            _taskbar = taskbar;
-            _dpi = GetDpiForWindow(taskbar);
+            _dpi = GetDpiForWindow(Taskbar);
             CreateHandle(new CreateParams
             {
                 Caption = "BatSignal",
-                Parent = taskbar,
+                Parent = Taskbar,
                 Style = WS_CHILD | WS_CLIPSIBLINGS,
                 ExStyle = WS_EX_LAYERED | WS_EX_NOACTIVATE,
             });
@@ -55,7 +76,7 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
                 Detach();
                 return false;
             }
-            Logger.Write("Taskbar widget attached");
+            Logger.Write($"Taskbar widget attached ({(IsPrimary ? "main" : "secondary")} taskbar)");
             return true;
         }
         catch (Exception e)
@@ -68,9 +89,10 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
 
     public void Detach()
     {
+        _tooltip?.HideTip();
         if (Handle != IntPtr.Zero) DestroyHandle();
-        _taskbar = IntPtr.Zero;
         _hover = false;
+        _hoverIndex = -1;
     }
 
     public void SetItems(IReadOnlyList<DeviceSnapshot> items, int threshold)
@@ -80,19 +102,20 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         if (IsAttached) Render();
     }
 
-    /// <summary>Called every second: follow taskbar moves, DPI and theme changes, and stay on top of the XAML content.</summary>
+    /// <summary>Called every second: follow taskbar changes, DPI and theme, and stay above the XAML content.</summary>
     public void Tick()
     {
         if (!IsAttached) return;
-        var dpi = GetDpiForWindow(_taskbar);
+        var dpi = GetDpiForWindow(Taskbar);
         if (dpi != _dpi)
         {
             _dpi = dpi;
             _placed = Rectangle.Empty;
         }
-        if (_placed.IsEmpty || ComputePlacement(_size) != _placed)
+        var (place, blocked) = ComputePlacement(_size);
+        if (_placed.IsEmpty || place != _placed || blocked != IsBlocked)
             Render();
-        else if (GetWindow(_taskbar, GW_CHILD) != Handle)
+        else if (!IsBlocked && GetWindow(Taskbar, GW_CHILD) != Handle)
             SetWindowPos(Handle, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
@@ -103,24 +126,43 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
 
     float S => _dpi / 96f;
 
-    Rectangle ComputePlacement(Size size)
+    (Rectangle Place, bool Blocked) ComputePlacement(Size size)
     {
-        GetWindowRect(_taskbar, out var tb);
-        var notify = FindWindowEx(_taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
-        int right = notify != IntPtr.Zero && GetWindowRect(notify, out var n) ? n.Left - tb.Left : tb.Width;
-        int x = right - size.Width - (int)(4 * S);
+        GetWindowRect(Taskbar, out var tb);
+        var info = _layout?.Get(Taskbar);
+
+        // Right edge: the tray as seen by UI Automation, else the TrayNotifyWnd window (main
+        // taskbar), else a clock-sized margin (secondary taskbars).
+        int trayLeft = info is { TrayLeft: > 0 } i && i.TrayLeft > tb.Left ? i.TrayLeft : -1;
+        if (trayLeft < 0)
+        {
+            var notify = FindWindowEx(Taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
+            trayLeft = notify != IntPtr.Zero && GetWindowRect(notify, out var n) ? n.Left : tb.Right - (int)(200 * S);
+        }
+
+        int x = trayLeft - tb.Left - size.Width - (int)(4 * S);
         int y = (tb.Height - size.Height) / 2;
-        return new Rectangle(x, y, size.Width, size.Height);
+        bool blocked = info is { ButtonsRight: > 0 } b && b.ButtonsRight + (int)(8 * S) > tb.Left + x;
+        return (new Rectangle(x, y, size.Width, size.Height), blocked);
     }
 
     bool Render()
     {
-        GetWindowRect(_taskbar, out var tb);
+        GetWindowRect(Taskbar, out var tb);
         using var bmp = Draw(S, (int)Math.Min(tb.Height - 8 * S, 40 * S));
 
-        // Position, then push the pixels.
-        var place = ComputePlacement(_size);
-        if (place != _placed)
+        var (place, blocked) = ComputePlacement(_size);
+        if (blocked != IsBlocked)
+            Logger.Write(blocked ? "Taskbar is crowded: widget steps aside" : "Taskbar has room again: widget back");
+        IsBlocked = blocked;
+        if (blocked)
+        {
+            _tooltip?.HideTip();
+            SetWindowPos(Handle, HWND_TOP, place.X, place.Y, place.Width, place.Height, SWP_NOACTIVATE | SWP_HIDEWINDOW);
+            _placed = place;
+            return Push(bmp);
+        }
+        if (place != _placed || !IsWindowVisible(Handle))
         {
             SetWindowPos(Handle, HWND_TOP, place.X, place.Y, place.Width, place.Height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
             _placed = place;
@@ -164,6 +206,7 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         _size = new Size((int)Math.Ceiling(width), height);
 
         // Draw
+        _hits.Clear();
         var bmp = new Bitmap(_size.Width, _size.Height, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
@@ -186,6 +229,7 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
             }
             foreach (var (d, text, iw, tw, bw) in layout)
             {
+                float start = x;
                 int alpha = d.Online ? 255 : 150; // asleep: last reading, dimmed
                 var pct = DeviceText.EffectivePercent(d);
                 var color = pct is int p ? palette.LevelColor(p, _threshold) : palette.Secondary;
@@ -212,6 +256,7 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
                     DrawCentered(g, Theme.GlyphCharging, boltFont, textBrush, x + 2 * s, cy, fmt);
                     x += bw;
                 }
+                _hits.Add((start - gap / 2f, x + gap / 2f, d));
                 x += gap;
             }
         }
@@ -260,6 +305,22 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         return p;
     }
 
+    void OnHoverMove(int x)
+    {
+        int index = _hits.FindIndex(h => x >= h.X0 && x < h.X1);
+        if (index == _hoverIndex) return;
+        _hoverIndex = index;
+        if (index < 0 || _tooltip is null)
+        {
+            _tooltip?.HideTip();
+            return;
+        }
+        var (x0, x1, d) = _hits[index];
+        var bounds = ScreenBounds;
+        var anchor = new Rectangle(bounds.Left + (int)x0, bounds.Top, (int)(x1 - x0), bounds.Height);
+        _tooltip.Schedule(anchor, d.Name, $"{DeviceText.Percent(d, showApprox: true)} · {DeviceText.Status(d)}");
+    }
+
     protected override void WndProc(ref Message m)
     {
         switch (m.Msg)
@@ -271,26 +332,34 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
                 Cursor.Current = Cursors.Default;
                 m.Result = 1;
                 return;
-            case WM_MOUSEMOVE when !_hover:
-                _hover = true;
-                var tme = new TRACKMOUSEEVENT
+            case WM_MOUSEMOVE:
+                if (!_hover)
                 {
-                    cbSize = System.Runtime.InteropServices.Marshal.SizeOf<TRACKMOUSEEVENT>(),
-                    dwFlags = TME_LEAVE,
-                    hwndTrack = Handle,
-                };
-                TrackMouseEvent(ref tme);
-                Render();
+                    _hover = true;
+                    var tme = new TRACKMOUSEEVENT
+                    {
+                        cbSize = System.Runtime.InteropServices.Marshal.SizeOf<TRACKMOUSEEVENT>(),
+                        dwFlags = TME_LEAVE,
+                        hwndTrack = Handle,
+                    };
+                    TrackMouseEvent(ref tme);
+                    Render();
+                }
+                OnHoverMove((short)(m.LParam.ToInt64() & 0xFFFF));
                 break;
             case WM_MOUSELEAVE:
                 _hover = false;
+                _hoverIndex = -1;
+                _tooltip?.HideTip();
                 Render();
                 break;
             case WM_LBUTTONUP:
-                LeftClick?.Invoke();
+                _tooltip?.HideTip();
+                LeftClick?.Invoke(this);
                 return;
             case WM_RBUTTONUP:
-                RightClick?.Invoke();
+                _tooltip?.HideTip();
+                RightClick?.Invoke(this);
                 return;
         }
         base.WndProc(ref m);

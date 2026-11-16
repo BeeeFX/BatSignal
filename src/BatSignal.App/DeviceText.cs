@@ -45,6 +45,7 @@ internal static class DeviceText
             ChargeState.Charging => "Charging",
             ChargeState.Full => "Fully charged",
             ChargeState.Error => "Battery error",
+            _ when d.TimeRemaining is { } left => Remaining(left),
             _ when d.Battery?.IsApproximate == true => "Reports in steps",
             _ when d.Battery?.IsEstimate == true => "Estimated from voltage",
             ChargeState.Discharging => "On battery",
@@ -57,6 +58,15 @@ internal static class DeviceText
         var text = $"{d.Name} — {Percent(d, showApprox: true)}\n{Status(d)}";
         return text.Length <= 127 ? text : text[..127];
     }
+
+    /// <summary>"About 2 days left", "About 5 hours left", "Less than an hour left".</summary>
+    public static string Remaining(TimeSpan left) => left.TotalHours switch
+    {
+        < 1 => "Less than an hour left",
+        < 1.5 => "About an hour left",
+        < 36 => $"About {Math.Round(left.TotalHours)} hours left",
+        _ => $"About {Math.Round(left.TotalDays)} days left",
+    };
 
     static string When(DateTimeOffset t) =>
         t.Date == DateTimeOffset.Now.Date ? t.ToString("HH:mm") : t.ToString("d MMM HH:mm");

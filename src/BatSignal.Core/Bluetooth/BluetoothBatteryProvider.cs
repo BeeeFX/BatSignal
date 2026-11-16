@@ -16,7 +16,7 @@ namespace BatSignal.Core.Bluetooth;
 /// stored on the device node (what Settings › Bluetooth &amp; devices shows), which also covers
 /// classic Bluetooth headsets that report battery over the hands-free profile.
 /// </summary>
-public sealed partial class BluetoothBatteryProvider
+public sealed partial class BluetoothBatteryProvider : IBatteryProvider
 {
     const string BatteryKey = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2";
     const string NameKey = "System.ItemNameDisplay";

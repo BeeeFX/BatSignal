@@ -13,7 +13,12 @@ public sealed class DeviceMonitor : IDisposable
     readonly Dictionary<string, EndpointState> _endpoints = new();
     readonly Dictionary<string, DeviceSnapshot> _devices = new();
     readonly AutoResetEvent _wake = new(false);
-    readonly Bluetooth.BluetoothBatteryProvider _bluetooth = new();
+    readonly IBatteryProvider[] _providers =
+    [
+        new Bluetooth.BluetoothBatteryProvider(),
+        new Gamepads.XInputProvider(),
+        new Gamepads.HidGamepadProvider(),
+    ];
     readonly Thread _thread;
     volatile bool _disposed;
     long _lastEventRefreshTicks;
@@ -28,7 +33,7 @@ public sealed class DeviceMonitor : IDisposable
     {
         foreach (var d in cached ?? [])
             _devices[d.Id] = d with { Online = false };
-        _bluetooth.Log += m => Log?.Invoke(m);
+        foreach (var p in _providers) p.Log += m => Log?.Invoke(m);
         _thread = new Thread(Run) { IsBackground = true, Name = "DeviceMonitor" };
     }
 
@@ -93,7 +98,7 @@ public sealed class DeviceMonitor : IDisposable
             }
         }
 
-        foreach (var snap in _bluetooth.Scan())
+        foreach (var snap in _providers.SelectMany(ScanProvider))
         {
             lock (_lock)
             {
@@ -110,6 +115,16 @@ public sealed class DeviceMonitor : IDisposable
         lock (_lock)
             foreach (var id in _devices.Keys.Where(id => !seen.Contains(id)).ToList())
                 _devices[id] = _devices[id] with { Online = false };
+    }
+
+    IReadOnlyList<DeviceSnapshot> ScanProvider(IBatteryProvider provider)
+    {
+        try { return provider.Scan(); }
+        catch (Exception e)
+        {
+            Log?.Invoke($"{provider.GetType().Name} failed: {e.Message}");
+            return [];
+        }
     }
 
     void ScanEndpoint(EndpointState state, HashSet<string> seen)
