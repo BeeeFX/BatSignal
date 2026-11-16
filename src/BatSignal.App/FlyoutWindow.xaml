@@ -321,7 +321,7 @@
                   </Border>
                   <StackPanel Grid.Column="2" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Name}" Foreground="{Binding NameBrush}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,1,0,0" />
                     <Grid Height="6" Margin="0,7,0,0" Visibility="{Binding BarVisibility}">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="{Binding Fill}" />

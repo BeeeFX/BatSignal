@@ -106,6 +106,14 @@ public class HistoryAndDisplayTests
         Assert.Equal("Charging", DeviceText.Status(Mouse(70, ChargeState.Charging) with { TimeRemaining = TimeSpan.FromDays(3) }));
     }
 
+    [Fact]
+    public void Status_ChargingShowsTimeToFull()
+    {
+        var charging = Mouse(55, ChargeState.Charging) with { TimeToFull = TimeSpan.FromMinutes(80) };
+        Assert.Equal("Charging · full in ~1 h 20 min", DeviceText.Status(charging));
+        Assert.Equal("Charging", DeviceText.Status(Mouse(55, ChargeState.Charging)));
+    }
+
     // Customization ---------------------------------------------------------------------------
 
     [Fact]

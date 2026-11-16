@@ -57,7 +57,7 @@ static class Program
             ["states"] =
             [
                 mouse with { Battery = mouse.Battery! with { Percent = 12, State = ChargeState.Discharging } },
-                keyboard with { Battery = keyboard.Battery! with { Percent = 20, State = ChargeState.Charging } },
+                keyboard with { Battery = keyboard.Battery! with { Percent = 55, State = ChargeState.Charging, IsApproximate = true, IsEstimate = true }, TimeToFull = TimeSpan.FromMinutes(80) },
                 Fake("Gamepad", DeviceKind.Gamepad, 88) with { Online = false, LastSeen = DateTimeOffset.Now.AddHours(-3) },
                 Fake("DualSense", DeviceKind.Gamepad, 45) with { Connection = "USB", TimeRemaining = TimeSpan.FromHours(5) },
                 Fake("Work mouse", DeviceKind.Mouse, 64) with { Connection = "Bluetooth", OriginalName = "LOGI M240", Label = "M240", Battery = new BatteryInfo(64, BatteryLevel.Good, ChargeState.Unknown, null, false, false, "preview") },

@@ -42,9 +42,8 @@ internal static class DeviceText
             return d.LastSeen is { } seen ? $"Asleep · seen {When(seen)}" : "Asleep";
         return d.Battery?.State switch
         {
-            ChargeState.Charging when d.Battery?.IsEstimate == true =>
-                d.TimeToFull is { } t1 ? $"Charging · estimated, full in {ToFull(t1)}" : "Charging · estimated",
-            ChargeState.Charging => d.TimeToFull is { } t2 ? $"Charging · full in {ToFull(t2)}" : "Charging",
+            // The "~" on the percentage already says when the level is estimated.
+            ChargeState.Charging => d.TimeToFull is { } t ? $"Charging · full in ~{ToFull(t)[6..]}" : "Charging",
             ChargeState.Full => "Fully charged",
             ChargeState.Error => "Battery error",
             _ when d.TimeRemaining is { } left => Remaining(left),
