@@ -80,14 +80,14 @@ internal sealed class DeviceSettingsModel : INotifyPropertyChanged
     public required string DefaultIconKey { get; init; }
     public IReadOnlyList<IconChoiceModel> IconChoices { get; private set; } = [];
 
-    public static DeviceSettingsModel From(DeviceSnapshot d, Settings settings)
+    public static DeviceSettingsModel From(DeviceSnapshot d, Settings settings, double? chargeRate = null)
     {
         settings.Devices.TryGetValue(d.Id, out var c);
         var m = new DeviceSettingsModel
         {
             Id = d.Id,
             OriginalName = d.OriginalName ?? d.Name,
-            Subtitle = d.Connection,
+            Subtitle = chargeRate is double r ? $"{d.Connection} · {DeviceText.FullCharge(r)}" : d.Connection,
             DefaultIconKey = IconCatalog.DefaultKey(d.Kind),
             _customName = c?.Name ?? "",
             _iconKey = c?.Icon,

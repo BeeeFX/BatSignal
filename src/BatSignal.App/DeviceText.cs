@@ -42,7 +42,9 @@ internal static class DeviceText
             return d.LastSeen is { } seen ? $"Asleep · seen {When(seen)}" : "Asleep";
         return d.Battery?.State switch
         {
-            ChargeState.Charging => "Charging",
+            ChargeState.Charging when d.Battery?.IsEstimate == true =>
+                d.TimeToFull is { } t1 ? $"Charging · estimated, full in {ToFull(t1)}" : "Charging · estimated",
+            ChargeState.Charging => d.TimeToFull is { } t2 ? $"Charging · full in {ToFull(t2)}" : "Charging",
             ChargeState.Full => "Fully charged",
             ChargeState.Error => "Battery error",
             _ when d.TimeRemaining is { } left => Remaining(left),
@@ -67,6 +69,21 @@ internal static class DeviceText
         < 36 => $"About {Math.Round(left.TotalHours)} hours left",
         _ => $"About {Math.Round(left.TotalDays)} days left",
     };
+
+    /// <summary>"about 25 min", "about 1 h 20 min", "about 4 hours".</summary>
+    public static string ToFull(TimeSpan t)
+    {
+        if (t.TotalMinutes < 55) return $"about {Math.Max(5, (int)Math.Round(t.TotalMinutes / 5) * 5)} min";
+        if (t.TotalHours < 3)
+        {
+            int total = (int)Math.Round(t.TotalMinutes / 10) * 10, h = total / 60, m = total % 60;
+            return m == 0 ? $"about {h} h" : $"about {h} h {m} min";
+        }
+        return $"about {Math.Round(t.TotalHours)} hours";
+    }
+
+    /// <summary>"Charges fully in about 2 h", from a learned rate in percent per hour.</summary>
+    public static string FullCharge(double percentPerHour) => $"Charges fully in {ToFull(TimeSpan.FromHours(100 / percentPerHour))}";
 
     static string When(DateTimeOffset t) =>
         t.Date == DateTimeOffset.Now.Date ? t.ToString("HH:mm") : t.ToString("d MMM HH:mm");

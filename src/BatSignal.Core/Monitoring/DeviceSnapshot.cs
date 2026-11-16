@@ -28,4 +28,7 @@ public sealed record DeviceSnapshot
 
     /// <summary>Estimated time until empty, from the battery history.</summary>
     [JsonIgnore] public TimeSpan? TimeRemaining { get; init; }
+
+    /// <summary>Estimated time until fully charged, while charging.</summary>
+    [JsonIgnore] public TimeSpan? TimeToFull { get; init; }
 }

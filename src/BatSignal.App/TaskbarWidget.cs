@@ -191,7 +191,8 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         var layout = new List<(DeviceSnapshot d, string text, float iconW, float textW, float boltW)>();
         foreach (var d in _items)
         {
-            var text = DeviceText.Percent(d);
+            // An estimated charging level gets its "~" on the taskbar too.
+            var text = DeviceText.Percent(d, showApprox: d.Battery is { IsEstimate: true, State: BatSignal.Core.Hidpp.ChargeState.Charging });
             float iw = d.Label is { } label
                 ? mg.MeasureString(label, labelFont, 1000, fmt).Width + 2 * labelPad
                 : mg.MeasureString(IconCatalog.Glyph(d), iconFont, 1000, fmt).Width;

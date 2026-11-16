@@ -17,6 +17,9 @@ public sealed class BatteryHistory
     /// <summary>Discharge samples per device id, oldest first, since the last charge. Public for JSON.</summary>
     public Dictionary<string, List<Sample>> Samples { get; set; } = new();
 
+    /// <summary>Learned charge speed per device id, in percent per hour (see ChargeEstimator).</summary>
+    public Dictionary<string, double> ChargeRates { get; set; } = new();
+
     /// <summary>Adds a reading. Returns true when the history changed (worth saving).</summary>
     public bool Record(DeviceSnapshot d, DateTimeOffset now)
     {
@@ -60,5 +63,6 @@ public sealed class BatteryHistory
     {
         var keep = keepIds.ToHashSet();
         foreach (var id in Samples.Keys.Where(k => !keep.Contains(k)).ToList()) Samples.Remove(id);
+        foreach (var id in ChargeRates.Keys.Where(k => !keep.Contains(k)).ToList()) ChargeRates.Remove(id);
     }
 }

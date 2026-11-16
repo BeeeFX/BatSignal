@@ -171,6 +171,9 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
             _ => ChargeState.Error,
         };
         int pct = s[0], next = s[1];
+        // While charging, devices like MX Keys report level 0 = "unknown", not empty.
+        if (pct == 0 && state is ChargeState.Charging or ChargeState.Full)
+            return new BatteryInfo(null, BatteryLevel.Unknown, state, null, false, false, "0x1000 battery status");
         // Devices like MX Keys report 100/50/20/5: "next level" is far below the current one.
         bool stepped = next > 0 && pct - next > 10;
         return new BatteryInfo(pct, LevelFromPercent(pct), state, null, false, stepped, "0x1000 battery status");

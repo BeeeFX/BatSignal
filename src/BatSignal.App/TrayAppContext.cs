@@ -50,7 +50,8 @@ internal sealed class TrayAppContext : ApplicationContext
         _tray.RightClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)), settingsPage: true);
 
         _raw = _settings.LastKnownDevices.Select(d => d with { Online = false }).ToList();
-        _monitor = new DeviceMonitor(_settings.LastKnownDevices);
+        _monitor = new DeviceMonitor(_settings.LastKnownDevices, _history.ChargeRates);
+        _flyout.ChargeRate = id => _monitor.Charging.LearnedRate(id);
         _monitor.Log += Logger.Write;
         _monitor.Updated += list => _ui.BeginInvoke(() => OnUpdated(list));
 
@@ -81,6 +82,13 @@ internal sealed class TrayAppContext : ApplicationContext
 
         bool changed = false;
         foreach (var d in raw) changed |= _history.Record(d, _updated.Value);
+        var rates = _monitor.Charging.Rates;
+        if (rates.Count != _history.ChargeRates.Count || rates.Any(r => !_history.ChargeRates.TryGetValue(r.Key, out var v) || v != r.Value))
+        {
+            _history.ChargeRates = rates.ToDictionary(r => r.Key, r => r.Value);
+            Logger.Write("Charge speeds: " + string.Join(", ", rates.Select(r => $"{r.Key} {r.Value:0.#} %/h")));
+            changed = true;
+        }
         if (changed) SaveHistory();
 
         ApplyView();
@@ -102,7 +110,11 @@ internal sealed class TrayAppContext : ApplicationContext
     {
         var now = DateTimeOffset.Now;
         _devices = Customization.Apply(_raw, _settings)
-            .Select(d => d with { TimeRemaining = Remaining(d, now) })
+            .Select(d => d with
+            {
+                TimeRemaining = Remaining(d, now),
+                TimeToFull = d.Battery is { State: ChargeState.Charging, Percent: int p } ? _monitor.Charging.TimeToFull(d.Id, p) : null,
+            })
             .ToList();
 
         bool useTray = true;

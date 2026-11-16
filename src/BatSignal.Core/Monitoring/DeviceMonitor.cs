@@ -13,6 +13,10 @@ public sealed class DeviceMonitor : IDisposable
     readonly Dictionary<string, EndpointState> _endpoints = new();
     readonly Dictionary<string, DeviceSnapshot> _devices = new();
     readonly AutoResetEvent _wake = new(false);
+    readonly ChargeEstimator _charging;
+
+    /// <summary>Charge sessions and learned charge rates (save <see cref="ChargeEstimator.Rates"/> between runs).</summary>
+    public ChargeEstimator Charging => _charging;
     readonly IBatteryProvider[] _providers =
     [
         new Bluetooth.BluetoothBatteryProvider(),
@@ -29,10 +33,16 @@ public sealed class DeviceMonitor : IDisposable
     public event Action<IReadOnlyList<DeviceSnapshot>>? Updated;
     public event Action<string>? Log;
 
-    public DeviceMonitor(IEnumerable<DeviceSnapshot>? cached = null)
+    public DeviceMonitor(IEnumerable<DeviceSnapshot>? cached = null, IEnumerable<KeyValuePair<string, double>>? chargeRates = null)
     {
+        _charging = new ChargeEstimator(chargeRates);
         foreach (var d in cached ?? [])
-            _devices[d.Id] = d with { Online = false };
+        {
+            // Versions before 0.1.1 saved "0 % while charging" for devices that stop reporting
+            // a level on charge; that 0 means unknown.
+            var battery = d.Battery is { Percent: 0, State: ChargeState.Charging, IsEstimate: false } ? null : d.Battery;
+            _devices[d.Id] = d with { Online = false, Battery = battery };
+        }
         foreach (var p in _providers) p.Log += m => Log?.Invoke(m);
         _thread = new Thread(Run) { IsBackground = true, Name = "DeviceMonitor" };
     }
@@ -61,7 +71,8 @@ public sealed class DeviceMonitor : IDisposable
             try { Updated?.Invoke(Snapshot()); }
             catch (Exception e) { Log?.Invoke($"Update handler failed: {e}"); }
 
-            _wake.WaitOne(PollInterval);
+            // Poll faster while a charging level is being estimated, so it visibly climbs.
+            _wake.WaitOne(_charging.AnyEstimating ? TimeSpan.FromSeconds(30) : PollInterval);
         }
     }
 
@@ -105,7 +116,7 @@ public sealed class DeviceMonitor : IDisposable
                 _devices.TryGetValue(snap.Id, out var previous);
                 _devices[snap.Id] = snap with
                 {
-                    Battery = snap.Battery ?? previous?.Battery,
+                    Battery = _charging.Apply(snap.Id, snap.Battery, previous?.Battery, DateTimeOffset.Now),
                     LastSeen = snap.Online ? snap.LastSeen : previous?.LastSeen,
                 };
             }
@@ -172,7 +183,7 @@ public sealed class DeviceMonitor : IDisposable
                         Name = ident.Name,
                         Kind = ident.Kind,
                         Connection = state.Connection,
-                        Battery = battery ?? previous?.Battery,
+                        Battery = _charging.Apply(id, battery, previous?.Battery, DateTimeOffset.Now),
                         Online = true,
                         LastSeen = DateTimeOffset.Now,
                     };

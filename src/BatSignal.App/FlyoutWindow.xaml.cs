@@ -34,6 +34,9 @@ internal sealed partial class FlyoutWindow
     public event Action? RefreshRequested;
     public event Action? ExitRequested;
     public event Action? TestAlertRequested;
+
+    /// <summary>Learned charge speed for a device (percent per hour), shown in Settings.</summary>
+    public Func<string, double?> ChargeRate { get; set; } = _ => null;
     public event Action? UpdateRequested;
 
     /// <summary>Shows the "update ready" banner on the devices page.</summary>
@@ -99,7 +102,7 @@ internal sealed partial class FlyoutWindow
         _customize.Clear();
         foreach (var d in _all)
         {
-            var m = DeviceSettingsModel.From(d, _settings);
+            var m = DeviceSettingsModel.From(d, _settings, ChargeRate(d.Id));
             m.Changed += OnDeviceSettingChanged;
             _customize.Add(m);
         }

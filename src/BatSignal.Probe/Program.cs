@@ -27,6 +27,34 @@ if (args.Contains("--bluetooth"))
     return;
 }
 
+if (args.Contains("--features"))
+{
+    // Lists every HID++ 2.0 feature of every online device (feature set 0x0001), and polls
+    // battery-related ones so we can see what changes while charging.
+    foreach (var e in HidppDiscovery.Find())
+    {
+        using var c = HidppDiscovery.Open(e);
+        if (c is null) continue;
+        for (byte idx = 1; idx <= 6; idx++)
+        {
+            var d = new HidppDevice(c, idx);
+            if (d.Ping() is not { Major: >= 2 }) continue;
+            Console.WriteLine($"== {d.GetName()} (0x{e.ProductId:X4} slot {idx})");
+            int count = d.Call(0x0001, 0)[0];
+            for (int i = 1; i <= count; i++)
+            {
+                var f = d.Call(0x0001, 1, (byte)i);
+                ushort id = (ushort)((f[0] << 8) | f[1]);
+                string extra = "";
+                if (id is 0x1000 or 0x1001 or 0x1004 or 0x1F20 or 0x1010)
+                    try { extra = " fn0 -> " + Convert.ToHexString(d.Call(id, 0)[..8]) + (id == 0x1004 ? " fn1 -> " + Convert.ToHexString(d.Call(id, 1)[..8]) : ""); } catch (Exception ex) { extra = " " + ex.Message; }
+                Console.WriteLine($"   [{i,2}] 0x{id:X4} v{f[3]}{extra}");
+            }
+        }
+    }
+    return;
+}
+
 var endpoints = HidppDiscovery.Find();
 Console.WriteLine($"Found {endpoints.Count} HID++ endpoint(s).");
 
