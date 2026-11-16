@@ -22,6 +22,8 @@ internal sealed class TrayAppContext : ApplicationContext
     readonly FlyoutWindow _flyout;
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     readonly HashSet<string> _alerted = [];
+    readonly Updater _updater = new();
+    readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     IReadOnlyList<DeviceSnapshot> _raw = [];
     IReadOnlyList<DeviceSnapshot> _devices = [];
     DateTimeOffset? _updated;
@@ -35,6 +37,12 @@ internal sealed class TrayAppContext : ApplicationContext
         _flyout.ExitRequested += ExitThread;
         _flyout.SettingsChanged += OnSettingsChanged;
         _flyout.TestAlertRequested += () => Notify("Test alert", "Low-battery alerts look like this.", null);
+        _flyout.UpdateRequested += ApplyUpdate;
+        _updater.UpdateReady += version =>
+        {
+            _flyout.SetUpdate(version);
+            Notify($"BatSignal {version} is ready", "Open BatSignal and choose Restart to update.", null);
+        };
 
         _widgets.LeftClick += anchor => ToggleFlyout(anchor, settingsPage: false);
         _widgets.RightClick += anchor => ToggleFlyout(anchor, settingsPage: true);
@@ -53,6 +61,15 @@ internal sealed class TrayAppContext : ApplicationContext
         ApplyView();
         _timer.Start();
         _monitor.Start();
+
+        if (_updater.IsInstalled)
+        {
+            // Keep "Start with Windows" pointing at this installed copy.
+            try { if (Settings.StartWithWindows) Settings.StartWithWindows = true; } catch { }
+            _updateTimer.Tick += async (_, _) => await _updater.CheckAsync();
+            _updateTimer.Start();
+            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => _ui.BeginInvoke(async () => await _updater.CheckAsync()));
+        }
     }
 
     void OnUpdated(IReadOnlyList<DeviceSnapshot> raw)
@@ -196,16 +213,29 @@ internal sealed class TrayAppContext : ApplicationContext
         }
     }
 
-    protected override void ExitThreadCore()
+    void ApplyUpdate()
     {
-        Logger.Write("Exiting");
+        Logger.Write("Restarting to update");
+        Shutdown();
+        _updater.ApplyAndRestart();
+    }
+
+    void Shutdown()
+    {
         _timer.Stop();
+        _updateTimer.Stop();
         SystemEvents.UserPreferenceChanged -= OnThemeChanged;
         _monitor.Dispose();
         _widgets.Dispose();
         _tray.Dispose();
         _flyout.Close();
         _settings.Save();
+    }
+
+    protected override void ExitThreadCore()
+    {
+        Logger.Write("Exiting");
+        Shutdown();
         base.ExitThreadCore();
     }
 }

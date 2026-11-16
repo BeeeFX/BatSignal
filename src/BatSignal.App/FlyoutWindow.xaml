@@ -281,6 +281,15 @@
         <TextBlock x:Name="UpdatedText" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center" />
       </Grid>
 
+      <Border x:Name="UpdateBanner" DockPanel.Dock="Top" Visibility="Collapsed" Background="{DynamicResource Bs.Surface}"
+              BorderBrush="{DynamicResource Bs.Accent}" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10">
+        <Grid>
+          <TextBlock x:Name="UpdateText" VerticalAlignment="Center" FontSize="13" />
+          <Button Style="{StaticResource TextButton}" Content="Restart to update" HorizontalAlignment="Right"
+                  Background="{DynamicResource Bs.Background}" Click="Update_Click" />
+        </Grid>
+      </Border>
+
       <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Bs.Border}" BorderThickness="0,1,0,0" Padding="0,10,0,0">
         <Grid>
           <TextBlock x:Name="AlertText" FontSize="12" Foreground="{DynamicResource Bs.Secondary}" VerticalAlignment="Center" />

@@ -34,6 +34,14 @@ internal sealed partial class FlyoutWindow
     public event Action? RefreshRequested;
     public event Action? ExitRequested;
     public event Action? TestAlertRequested;
+    public event Action? UpdateRequested;
+
+    /// <summary>Shows the "update ready" banner on the devices page.</summary>
+    public void SetUpdate(string version)
+    {
+        UpdateText.Text = $"Version {version} is ready";
+        UpdateBanner.Visibility = Visibility.Visible;
+    }
 
     /// <summary>Raised after the user changed a setting; the settings object is already updated.</summary>
     public event Action? SettingsChanged;
@@ -154,6 +162,7 @@ internal sealed partial class FlyoutWindow
     void Back_Click(object sender, RoutedEventArgs e) { CommitEdits(); ShowDevicesPage(); }
     void Exit_Click(object sender, RoutedEventArgs e) => ExitRequested?.Invoke();
     void TestAlert_Click(object sender, RoutedEventArgs e) => TestAlertRequested?.Invoke();
+    void Update_Click(object sender, RoutedEventArgs e) => UpdateRequested?.Invoke();
     void MoveUp_Click(object sender, RoutedEventArgs e) => Move(sender, -1);
     void MoveDown_Click(object sender, RoutedEventArgs e) => Move(sender, +1);
 

@@ -9,6 +9,17 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Installer hooks (Velopack). Must run first: during install/update/uninstall it handles
+        // the event and exits before any UI starts.
+        Velopack.VelopackApp.Build()
+            .OnFirstRun(_ => { try { Settings.StartWithWindows = true; } catch { } })
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                try { Settings.StartWithWindows = false; } catch { }
+                Toasts.Unregister();
+            })
+            .Run();
+
         if (args is ["--preview", var dir])
         {
             ApplicationConfiguration.Initialize();
@@ -34,7 +45,8 @@ static class Program
     {
         Directory.CreateDirectory(dir);
         var settings = Settings.Load();
-        var real = Customization.Apply(settings.LastKnownDevices, settings);
+        var real = Customization.Apply(settings.LastKnownDevices, settings)
+            .Where(d => !settings.HiddenDevices.Contains(d.Id)).ToList();
         var mouse = real.FirstOrDefault(d => d.Kind == DeviceKind.Mouse && d.Battery is not null) ?? Fake("PRO X2 SUPERSTRIKE", DeviceKind.Mouse, 72);
         var keyboard = real.FirstOrDefault(d => d.Kind == DeviceKind.Keyboard && d.Battery is not null) ?? Fake("MX Keys Wireless Keyboard", DeviceKind.Keyboard, 50);
 

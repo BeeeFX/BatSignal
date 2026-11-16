@@ -1,0 +1,50 @@
+name: Release
+
+# Push a tag like v0.2.0 to build the installer and open a DRAFT release.
+# Publish the draft by hand: installed copies only update from published releases.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version from tag
+        shell: pwsh
+        run: |
+          $v = '${{ github.ref_name }}'.TrimStart('v')
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Test
+        run: dotnet test BatSignal.sln -c Release
+
+      - name: Publish
+        run: dotnet publish src/BatSignal.App -c Release -r win-x64 --no-self-contained -p:Version=${{ env.VERSION }} -o publish
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version 1.2.161
+
+      - name: Fetch previous release (for delta updates)
+        continue-on-error: true
+        run: vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack installer
+        run: >
+          vpk pack --packId BatSignal --packVersion ${{ env.VERSION }} --packDir publish --mainExe BatSignal.exe
+          --packTitle BatSignal --packAuthors BeeeFX --icon assets/icon.ico --framework net10.0-x64-desktop
+
+      - name: Upload draft release
+        run: >
+          vpk upload github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }}
+          --releaseName "BatSignal ${{ env.VERSION }}" --tag ${{ github.ref_name }}

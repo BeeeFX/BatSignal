@@ -26,4 +26,8 @@
     <ProjectReference Include="..\BatSignal.Core\BatSignal.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
 </Project>
