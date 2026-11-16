@@ -47,7 +47,8 @@ internal static class DeviceText
             ChargeState.Error => "Battery error",
             _ when d.Battery?.IsApproximate == true => "Reports in steps",
             _ when d.Battery?.IsEstimate == true => "Estimated from voltage",
-            _ => "On battery",
+            ChargeState.Discharging => "On battery",
+            _ => "Connected",
         };
     }
 

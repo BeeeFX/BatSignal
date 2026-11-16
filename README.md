@@ -1,6 +1,6 @@
 # BatSignal
 
-See the battery level of your Logitech mouse and keyboard right on the Windows 11 taskbar.
+See the battery level of your mouse, keyboard and other wireless peripherals right on the Windows 11 taskbar.
 
 ![Taskbar widget](docs/images/widget-real.png)
 
@@ -12,17 +12,25 @@ BatSignal puts a small widget next to the clock showing each device and its batt
 
 - **On the taskbar:** a device icon and percentage for each peripheral, colored green, amber or red by level.
 - **Fallback to tray icons:** if the widget can't attach to the taskbar, each device gets a notification-area icon with its number inside a mouse or keyboard outline. The widget comes back on its own once the taskbar is available.
-- **Flyout:** left-click to see every device, its receiver, a battery bar and its status (on battery, charging, asleep and when it was last seen).
+- **Flyout:** left-click to see every device, its connection, a battery bar and its status (on battery, charging, asleep and when it was last seen).
+- **Make it yours:** rename devices, pick an icon or a short text label (handy with two mice), reorder them, and hide the ones you don't care about, all from the Settings page of the same panel.
+- **Bluetooth:** any paired Bluetooth device that reports its battery to Windows, whatever the brand.
 - **Low-battery alerts:** a Windows notification when a device drops below a threshold (15% by default; off, 10, 15, 20, 25 or 30%).
 - **Sleeping devices:** wireless devices sleep when idle. BatSignal keeps their last reading, dimmed, instead of hiding them.
 - **Light and dark theme** follows Windows.
-- **Start with Windows**, and a choice of which devices to show, from the right-click menu.
+- **Start with Windows**, from Settings.
 
-![Low, charging and asleep states](docs/images/widget-states.png)
+![Low, charging, asleep and labelled devices](docs/images/widget-states.png)
+
+<img src="docs/images/settings.png" alt="Settings page" width="380">
 
 ## Supported devices
 
-BatSignal talks to devices directly with Logitech's HID++ 2.0 protocol, through:
+BatSignal reads battery from two sources.
+
+**Bluetooth (any brand):** connected Bluetooth LE devices are read live from the standard Battery service. Other paired devices, including classic Bluetooth headsets, show the last level Windows stored (the one in Settings > Bluetooth & devices).
+
+**Logitech receivers and USB:** BatSignal talks to devices directly with Logitech's HID++ 2.0 protocol, through:
 
 - Unifying, Bolt and LIGHTSPEED receivers
 - devices plugged in over USB
@@ -37,7 +45,7 @@ It reads battery from whichever HID++ feature the device supports:
 
 Tested with a PRO X2 SUPERSTRIKE (LIGHTSPEED) and an MX Keys (Unifying). It runs alongside G HUB and Logi Options+; you don't need to close them.
 
-Not supported yet: Bluetooth connections and gamepads (see Roadmap).
+Not supported yet: other brands' own wireless dongles (Razer, Corsair, SteelSeries…), the Xbox Wireless Adapter, and Logitech headsets on LIGHTSPEED (see Roadmap).
 
 ## Install
 
@@ -49,12 +57,12 @@ Build from source with the .NET 10 SDK:
 dotnet publish src/BatSignal.App -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true -p:DebugType=none -o dist
 ```
 
-Then run `dist\BatSignal.exe`. Right-click the widget and choose **Start with Windows** to keep it running.
+Then run `dist\BatSignal.exe`. Open Settings (right-click the widget) and turn on **Start with Windows** to keep it running.
 
 ## Usage
 
 - **Left-click** the widget or a tray icon to open the flyout.
-- **Right-click** to open the menu: refresh, show in taskbar or notification area, low-battery alert level, shown devices, start with Windows, exit.
+- **Right-click**, or the gear in the panel, to open Settings: device names, icons, labels, order and visibility; taskbar or notification area; alert level; start with Windows; exit.
 
 BatSignal checks every 2 minutes. It also refreshes when a device reports a battery change or reconnects.
 
@@ -67,7 +75,7 @@ The widget is on the main taskbar only. In tray mode, Windows 11 may put new ico
 ## Troubleshooting
 
 - **Log:** `%APPDATA%\BatSignal\log.txt`. Settings and last known readings are stored in `settings.json` in the same folder.
-- **Probe:** a console tool that lists every receiver, device and battery reading.
+- **Probe:** a console tool that lists every receiver, device and battery reading (`--bluetooth` lists Bluetooth devices instead).
 
   ```bash
   dotnet run --project src/BatSignal.Probe
@@ -80,16 +88,17 @@ The widget is on the main taskbar only. In tray mode, Windows 11 may put new ico
 
 ```
 src/
-  BatSignal.Core/    HID++ protocol (receivers, devices, battery features) and the device monitor
-  BatSignal.App/     WinForms app: taskbar widget, tray icons, flyout, menu, alerts, settings
+  BatSignal.Core/    HID++ protocol, Bluetooth battery provider and the device monitor
+  BatSignal.App/     Taskbar widget and tray icons (WinForms), main panel with Settings (WPF), alerts
   BatSignal.Probe/   Console diagnostics
 ```
 
 ## Roadmap
 
-- Gamepad support (Xbox controllers through XInput, Logitech gamepads over HID++)
-- Bluetooth devices, using the battery service Windows already exposes
+- Xbox controllers on the Xbox Wireless Adapter (XInput), and wired/2.4 GHz gamepads
+- Logitech LIGHTSPEED headsets
 - Widget on secondary-monitor taskbars
+- Installer and signed releases
 
 ## Credits
 

@@ -17,6 +17,16 @@ if (args.Contains("--monitor"))
     return;
 }
 
+if (args.Contains("--bluetooth"))
+{
+    var bt = new BatSignal.Core.Bluetooth.BluetoothBatteryProvider();
+    bt.Log += m => Console.WriteLine($"log: {m}");
+    foreach (var d in bt.Scan())
+        Console.WriteLine($"{d.Name} ({d.Kind}) {(d.Online ? "connected" : "disconnected")} " +
+                          $"battery={d.Battery?.Percent?.ToString() ?? "?"}% [{d.Battery?.Source ?? "none"}] id={d.Id}");
+    return;
+}
+
 var endpoints = HidppDiscovery.Find();
 Console.WriteLine($"Found {endpoints.Count} HID++ endpoint(s).");
 

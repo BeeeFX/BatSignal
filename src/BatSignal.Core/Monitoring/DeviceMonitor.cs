@@ -13,6 +13,7 @@ public sealed class DeviceMonitor : IDisposable
     readonly Dictionary<string, EndpointState> _endpoints = new();
     readonly Dictionary<string, DeviceSnapshot> _devices = new();
     readonly AutoResetEvent _wake = new(false);
+    readonly Bluetooth.BluetoothBatteryProvider _bluetooth = new();
     readonly Thread _thread;
     volatile bool _disposed;
     long _lastEventRefreshTicks;
@@ -27,6 +28,7 @@ public sealed class DeviceMonitor : IDisposable
     {
         foreach (var d in cached ?? [])
             _devices[d.Id] = d with { Online = false };
+        _bluetooth.Log += m => Log?.Invoke(m);
         _thread = new Thread(Run) { IsBackground = true, Name = "DeviceMonitor" };
     }
 
@@ -89,6 +91,20 @@ public sealed class DeviceMonitor : IDisposable
                 Log?.Invoke($"Endpoint {state.Channel.Name} failed, closing: {e.Message}");
                 CloseEndpoint(state.Channel.Key);
             }
+        }
+
+        foreach (var snap in _bluetooth.Scan())
+        {
+            lock (_lock)
+            {
+                _devices.TryGetValue(snap.Id, out var previous);
+                _devices[snap.Id] = snap with
+                {
+                    Battery = snap.Battery ?? previous?.Battery,
+                    LastSeen = snap.Online ? snap.LastSeen : previous?.LastSeen,
+                };
+            }
+            if (snap.Online) seen.Add(snap.Id);
         }
 
         lock (_lock)

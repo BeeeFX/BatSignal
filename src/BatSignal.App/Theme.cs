@@ -57,14 +57,6 @@ internal static class Theme
         Installed.Contains("Segoe UI Variable Text Semibold") ? "Segoe UI Variable Text Semibold"
         : Installed.Contains("Segoe UI Semibold") ? "Segoe UI Semibold" : "Segoe UI";
 
-    public static string Glyph(DeviceKind kind) => kind switch
-    {
-        DeviceKind.Mouse or DeviceKind.Trackball or DeviceKind.Touchpad => "",
-        DeviceKind.Keyboard or DeviceKind.Numpad => "",
-        DeviceKind.Gamepad => "",
-        DeviceKind.Headset => "",
-        _ => "",
-    };
 
     public const string GlyphRefresh = "";
     public const string GlyphSettings = "";

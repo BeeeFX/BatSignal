@@ -6,7 +6,7 @@ namespace BatSignal.App;
 
 /// <summary>
 /// Wires everything together: the device monitor feeds the taskbar widget (or the tray icons
-/// when the widget can't attach), the flyout, the right-click menu and low-battery alerts.
+/// when the widget can't attach), the main window, and low-battery alerts.
 /// </summary>
 internal sealed class TrayAppContext : ApplicationContext
 {
@@ -14,12 +14,12 @@ internal sealed class TrayAppContext : ApplicationContext
     readonly Control _ui = new();
     readonly DeviceMonitor _monitor;
     readonly TaskbarWidget _widget = new();
-    readonly TrayIcons _tray;
-    readonly FlyoutForm _flyout = new();
-    readonly ContextMenuStrip _menu = new();
+    readonly TrayIcons _tray = new();
+    readonly FlyoutWindow _flyout;
     readonly NotifyIcon _alertIcon = new();
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     readonly HashSet<string> _alerted = [];
+    IReadOnlyList<DeviceSnapshot> _raw = [];
     IReadOnlyList<DeviceSnapshot> _devices = [];
     DateTimeOffset? _updated;
     int _ticks;
@@ -27,17 +27,20 @@ internal sealed class TrayAppContext : ApplicationContext
     public TrayAppContext()
     {
         _ui.CreateControl(); // handle for marshaling monitor updates onto the UI thread
-        _tray = new TrayIcons(_menu);
-        _menu.Opening += (_, _) => BuildMenu();
 
-        _widget.LeftClick += () => ToggleFlyout(_widget.ScreenBounds);
-        _widget.RightClick += () => ShowMenu(Cursor.Position);
-        _tray.LeftClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)));
-        _flyout.RefreshClicked += () => _monitor!.RefreshNow();
-        _flyout.SettingsClicked += pt => { _flyout.Hide(); ShowMenu(pt); };
-        _alertIcon.MouseClick += (_, _) => ToggleFlyout(new Rectangle(Cursor.Position, new Size(1, 1)));
+        _flyout = new FlyoutWindow(_settings);
+        _flyout.RefreshRequested += () => _monitor!.RefreshNow();
+        _flyout.ExitRequested += ExitThread;
+        _flyout.SettingsChanged += OnSettingsChanged;
 
-        _devices = _settings.LastKnownDevices.Select(d => d with { Online = false }).ToList();
+        _widget.LeftClick += () => ToggleFlyout(_widget.ScreenBounds, settingsPage: false);
+        _widget.RightClick += () => ToggleFlyout(_widget.ScreenBounds, settingsPage: true);
+        _tray.LeftClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)), settingsPage: false);
+        _tray.RightClick += pt => ToggleFlyout(new Rectangle(pt, new Size(1, 1)), settingsPage: true);
+        _alertIcon.MouseClick += (_, _) => ToggleFlyout(new Rectangle(Cursor.Position, new Size(1, 1)), settingsPage: false);
+
+        _raw = _settings.LastKnownDevices.Select(d => d with { Online = false }).ToList();
+        _devices = Customization.Apply(_raw, _settings);
         _monitor = new DeviceMonitor(_settings.LastKnownDevices);
         _monitor.Log += Logger.Write;
         _monitor.Updated += list => _ui.BeginInvoke(() => OnUpdated(list));
@@ -51,12 +54,20 @@ internal sealed class TrayAppContext : ApplicationContext
         _monitor.Start();
     }
 
-    void OnUpdated(IReadOnlyList<DeviceSnapshot> devices)
+    void OnUpdated(IReadOnlyList<DeviceSnapshot> raw)
     {
-        _devices = devices;
+        _raw = raw;
         _updated = DateTimeOffset.Now;
-        _settings.LastKnownDevices = devices.ToList();
+        _settings.LastKnownDevices = raw.ToList();
         _settings.Save();
+        ApplyView();
+        CheckAlerts();
+    }
+
+    void OnSettingsChanged()
+    {
+        _settings.Save();
+        _alerted.RemoveWhere(id => _settings.HiddenDevices.Contains(id));
         ApplyView();
         CheckAlerts();
     }
@@ -66,6 +77,7 @@ internal sealed class TrayAppContext : ApplicationContext
     /// <summary>Shows the devices in the widget when it's attached, otherwise in tray icons.</summary>
     void ApplyView()
     {
+        _devices = Customization.Apply(_raw, _settings);
         bool useWidget = _settings.Mode == DisplayMode.Taskbar && (_widget.IsAttached || _widget.TryAttach());
         if (useWidget)
         {
@@ -77,7 +89,7 @@ internal sealed class TrayAppContext : ApplicationContext
             _widget.Detach();
             _tray.Update(Visible, _settings.LowBatteryThreshold);
         }
-        _flyout.SetData(_devices, _settings.LowBatteryThreshold, _updated);
+        _flyout.SetData(_devices, _updated);
     }
 
     void OnTick()
@@ -106,79 +118,12 @@ internal sealed class TrayAppContext : ApplicationContext
             _ui.BeginInvoke(ApplyView);
     }
 
-    // Flyout and menu ------------------------------------------------------------------------
-
-    void ToggleFlyout(Rectangle anchor)
+    void ToggleFlyout(Rectangle anchor, bool settingsPage)
     {
-        if (_flyout.Visible) { _flyout.Hide(); return; }
+        if (_flyout.IsVisible) { _flyout.HideFlyout(); return; }
         if (_flyout.JustClosed) return; // this click is what closed it
-        _flyout.SetData(_devices, _settings.LowBatteryThreshold, _updated);
-        _flyout.ShowAt(anchor);
-    }
-
-    void ShowMenu(Point screenPoint)
-    {
-        _menu.Show(screenPoint);
-        // Make the menu foreground so clicking elsewhere closes it (we were clicked inside Explorer's taskbar).
-        Native.SetForegroundWindow(_menu.Handle);
-    }
-
-    void BuildMenu()
-    {
-        _menu.Items.Clear();
-        _menu.Items.Add("Refresh now", null, (_, _) => _monitor.RefreshNow());
-        _menu.Items.Add(new ToolStripSeparator());
-
-        var show = new ToolStripMenuItem("Show in");
-        show.DropDownItems.Add(Radio("Taskbar", _settings.Mode == DisplayMode.Taskbar, () => SetMode(DisplayMode.Taskbar)));
-        show.DropDownItems.Add(Radio("Notification area", _settings.Mode == DisplayMode.Tray, () => SetMode(DisplayMode.Tray)));
-        _menu.Items.Add(show);
-
-        var alert = new ToolStripMenuItem("Low-battery alert");
-        foreach (var t in new[] { 0, 10, 15, 20, 25, 30 })
-            alert.DropDownItems.Add(Radio(t == 0 ? "Off" : $"{t}%", _settings.LowBatteryThreshold == t, () =>
-            {
-                _settings.LowBatteryThreshold = t;
-                _alerted.Clear();
-                Save();
-            }));
-        _menu.Items.Add(alert);
-
-        var devices = new ToolStripMenuItem("Shown devices") { Enabled = _devices.Count > 0 };
-        foreach (var d in _devices)
-        {
-            var id = d.Id;
-            devices.DropDownItems.Add(new ToolStripMenuItem(d.Name, null, (_, _) =>
-            {
-                if (!_settings.HiddenDevices.Remove(id)) _settings.HiddenDevices.Add(id);
-                Save();
-            }) { Checked = !_settings.HiddenDevices.Contains(id) });
-        }
-        _menu.Items.Add(devices);
-
-        _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) =>
-        {
-            try { Settings.StartWithWindows = !Settings.StartWithWindows; }
-            catch (Exception e) { Logger.Write($"Autostart change failed: {e.Message}"); }
-        }) { Checked = Settings.StartWithWindows });
-
-        _menu.Items.Add(new ToolStripSeparator());
-        _menu.Items.Add("Exit", null, (_, _) => ExitThread());
-    }
-
-    static ToolStripMenuItem Radio(string text, bool selected, Action onClick) =>
-        new(text, null, (_, _) => onClick()) { Checked = selected };
-
-    void SetMode(DisplayMode mode)
-    {
-        _settings.Mode = mode;
-        Save();
-    }
-
-    void Save()
-    {
-        _settings.Save();
-        ApplyView();
+        _flyout.SetData(_devices, _updated);
+        _flyout.ShowAt(anchor, settingsPage);
     }
 
     // Alerts ---------------------------------------------------------------------------------
@@ -223,7 +168,7 @@ internal sealed class TrayAppContext : ApplicationContext
             return;
         }
         var palette = Theme.Current;
-        using var bmp = TrayIcons.Render(low.Kind, DeviceText.EffectivePercent(low)?.ToString() ?? "!", palette.Low, true);
+        using var bmp = TrayIcons.Render(IconCatalog.Shape(low), DeviceText.EffectivePercent(low)?.ToString() ?? "!", palette.Low, true);
         var old = _alertIcon.Icon;
         _alertIcon.Icon = Icon.FromHandle(bmp.GetHicon());
         if (old is not null) { Native.DestroyIcon(old.Handle); old.Dispose(); }
@@ -241,7 +186,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _tray.Dispose();
         _alertIcon.Visible = false;
         _alertIcon.Dispose();
-        _flyout.Dispose();
+        _flyout.Close();
         _settings.Save();
         base.ExitThreadCore();
     }

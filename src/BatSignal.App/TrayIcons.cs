@@ -7,12 +7,13 @@ using BatSignal.Core.Monitoring;
 namespace BatSignal.App;
 
 /// <summary>Fallback view: one notification-area icon per device, the number drawn inside a device outline.</summary>
-internal sealed class TrayIcons(ContextMenuStrip menu) : IDisposable
+internal sealed class TrayIcons : IDisposable
 {
     const string PlaceholderId = "__placeholder";
     readonly Dictionary<string, (NotifyIcon Icon, IntPtr HIcon)> _icons = new();
 
     public event Action<Point>? LeftClick;
+    public event Action<Point>? RightClick;
 
     public bool IsShown => _icons.Count > 0;
 
@@ -36,7 +37,7 @@ internal sealed class TrayIcons(ContextMenuStrip menu) : IDisposable
             var pct = DeviceText.EffectivePercent(d);
             string text = d.Battery?.Percent is int p ? (p >= 100 ? "F" : p.ToString()) : pct is null ? "–" : DeviceText.Percent(d)[..1];
             var color = pct is int v ? palette.LevelColor(v, threshold) : palette.Secondary;
-            Set(d.Id, Render(d.Kind, text, color, d.Online), DeviceText.Tooltip(d));
+            Set(d.Id, Render(IconCatalog.Shape(d), text, color, d.Online), DeviceText.Tooltip(d));
         }
     }
 
@@ -54,8 +55,12 @@ internal sealed class TrayIcons(ContextMenuStrip menu) : IDisposable
             _icons[id] = (existing.Icon, hIcon);
             return;
         }
-        var ni = new NotifyIcon { Icon = icon, Text = tooltip, ContextMenuStrip = menu, Visible = true };
-        ni.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) LeftClick?.Invoke(Cursor.Position); };
+        var ni = new NotifyIcon { Icon = icon, Text = tooltip, Visible = true };
+        ni.MouseClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) LeftClick?.Invoke(Cursor.Position);
+            else if (e.Button == MouseButtons.Right) RightClick?.Invoke(Cursor.Position);
+        };
         _icons[id] = (ni, hIcon);
     }
 

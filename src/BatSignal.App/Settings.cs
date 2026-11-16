@@ -16,6 +16,18 @@ internal sealed class Settings
 
     public HashSet<string> HiddenDevices { get; set; } = [];
 
+    /// <summary>Per-device name, icon and label chosen by the user, keyed by device id.</summary>
+    public Dictionary<string, DeviceCustomization> Devices { get; set; } = new();
+
+    /// <summary>Device ids in the order the user arranged them; unknown devices go after these.</summary>
+    public List<string> Order { get; set; } = [];
+
+    public DeviceCustomization CustomizationFor(string id)
+    {
+        if (!Devices.TryGetValue(id, out var c)) Devices[id] = c = new DeviceCustomization();
+        return c;
+    }
+
     public List<DeviceSnapshot> LastKnownDevices { get; set; } = [];
 
     public static string Folder { get; } =
@@ -72,6 +84,15 @@ internal sealed class Settings
             else key.DeleteValue(RunValue, throwOnMissingValue: false);
         }
     }
+}
+
+internal sealed class DeviceCustomization
+{
+    public string? Name { get; set; }
+    public string? Icon { get; set; }
+    public string? Label { get; set; }
+
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Name) && Icon is null && string.IsNullOrWhiteSpace(Label);
 }
 
 internal static class Logger

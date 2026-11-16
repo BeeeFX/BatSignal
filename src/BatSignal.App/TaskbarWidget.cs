@@ -138,6 +138,8 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         using var iconFont = new Font(Theme.IconFont, 15 * s, GraphicsUnit.Pixel);
         using var textFont = new Font(Theme.UiSemibold, 13 * s, GraphicsUnit.Pixel);
         using var boltFont = new Font(Theme.IconFont, 11 * s, GraphicsUnit.Pixel);
+        using var labelFont = new Font(Theme.UiSemibold, 10.5f * s, GraphicsUnit.Pixel);
+        float labelPad = 3 * s;
         var fmt = StringFormat.GenericTypographic;
 
         // Measure
@@ -148,7 +150,9 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
         foreach (var d in _items)
         {
             var text = DeviceText.Percent(d);
-            float iw = mg.MeasureString(Theme.Glyph(d.Kind), iconFont, 1000, fmt).Width;
+            float iw = d.Label is { } label
+                ? mg.MeasureString(label, labelFont, 1000, fmt).Width + 2 * labelPad
+                : mg.MeasureString(IconCatalog.Glyph(d), iconFont, 1000, fmt).Width;
             float tw = mg.MeasureString(text, textFont, 1000, fmt).Width;
             float bw = DeviceText.IsCharging(d) ? mg.MeasureString(Theme.GlyphCharging, boltFont, 1000, fmt).Width + 2 * s : 0;
             layout.Add((d, text, iw, tw, bw));
@@ -187,7 +191,19 @@ internal sealed class TaskbarWidget : NativeWindow, IDisposable
                 var color = pct is int p ? palette.LevelColor(p, _threshold) : palette.Secondary;
                 using var iconBrush = new SolidBrush(Color.FromArgb(alpha, palette.Text));
                 using var textBrush = new SolidBrush(Color.FromArgb(alpha, color));
-                DrawCentered(g, Theme.Glyph(d.Kind), iconFont, iconBrush, x, cy, fmt);
+                if (d.Label is { } label)
+                {
+                    // Text label in a small rounded outline, where the icon would be.
+                    var box = new RectangleF(x, cy - 8 * s, iw, 16 * s);
+                    using (var pen = new Pen(Color.FromArgb(alpha * 2 / 3, palette.Text), 1 * s))
+                    using (var path = RoundedRect(box, 3 * s))
+                        g.DrawPath(pen, path);
+                    DrawCentered(g, label, labelFont, iconBrush, x + labelPad, cy, fmt);
+                }
+                else
+                {
+                    DrawCentered(g, IconCatalog.Glyph(d), iconFont, iconBrush, x, cy, fmt);
+                }
                 x += iw + iconGap;
                 DrawCentered(g, text, textFont, textBrush, x, cy, fmt);
                 x += tw;

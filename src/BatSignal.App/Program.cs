@@ -33,18 +33,20 @@ static class Program
     static void Preview(string dir)
     {
         Directory.CreateDirectory(dir);
-        var real = Settings.Load().LastKnownDevices;
-        var mouse = real.FirstOrDefault(d => d.Kind == DeviceKind.Mouse) ?? Fake("PRO X2 SUPERSTRIKE", DeviceKind.Mouse, 72);
-        var keyboard = real.FirstOrDefault(d => d.Kind == DeviceKind.Keyboard) ?? Fake("MX Keys Wireless Keyboard", DeviceKind.Keyboard, 50);
+        var settings = Settings.Load();
+        var real = Customization.Apply(settings.LastKnownDevices, settings);
+        var mouse = real.FirstOrDefault(d => d.Kind == DeviceKind.Mouse && d.Battery is not null) ?? Fake("PRO X2 SUPERSTRIKE", DeviceKind.Mouse, 72);
+        var keyboard = real.FirstOrDefault(d => d.Kind == DeviceKind.Keyboard && d.Battery is not null) ?? Fake("MX Keys Wireless Keyboard", DeviceKind.Keyboard, 50);
 
         var scenarios = new Dictionary<string, List<DeviceSnapshot>>
         {
-            ["real"] = [mouse, keyboard],
+            ["real"] = real.Count > 0 ? real.ToList() : [mouse, keyboard],
             ["states"] =
             [
                 mouse with { Battery = mouse.Battery! with { Percent = 12, State = ChargeState.Discharging } },
                 keyboard with { Battery = keyboard.Battery! with { Percent = 20, State = ChargeState.Charging } },
                 Fake("Gamepad", DeviceKind.Gamepad, 88) with { Online = false, LastSeen = DateTimeOffset.Now.AddHours(-3) },
+                Fake("Work mouse", DeviceKind.Mouse, 64) with { Connection = "Bluetooth", OriginalName = "LOGI M240", Label = "M240", Battery = new BatteryInfo(64, BatteryLevel.Good, ChargeState.Unknown, null, false, false, "preview") },
             ],
         };
 
@@ -69,15 +71,24 @@ static class Program
             foreach (var d in devices)
             {
                 var pct = DeviceText.EffectivePercent(d) ?? 0;
-                using var icon = TrayIcons.Render(d.Kind, pct >= 100 ? "F" : pct.ToString(), Theme.Current.LevelColor(pct, 15), d.Online);
+                using var icon = TrayIcons.Render(IconCatalog.Shape(d), pct >= 100 ? "F" : pct.ToString(), Theme.Current.LevelColor(pct, 15), d.Online);
                 icon.Save(Path.Combine(dir, $"tray-{name}-{i++}.png"), ImageFormat.Png);
             }
 
-            using var flyout = new FlyoutForm();
-            flyout.SetData(devices, 15, DateTimeOffset.Now);
-            using var shot = flyout.Snapshot();
-            shot.Save(Path.Combine(dir, $"flyout-{name}.png"), ImageFormat.Png);
+            var flyout = new FlyoutWindow(name == "real" ? settings : new Settings());
+            flyout.SetData(devices, DateTimeOffset.Now);
+            SavePng(flyout.Render(settingsPage: false), Path.Combine(dir, $"flyout-{name}.png"));
+            if (name == "real") SavePng(flyout.Render(settingsPage: true), Path.Combine(dir, "settings.png"));
+            flyout.Close();
         }
+    }
+
+    static void SavePng(System.Windows.Media.Imaging.BitmapSource image, string path)
+    {
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+        using var file = File.Create(path);
+        encoder.Save(file);
     }
 
     static DeviceSnapshot Fake(string name, DeviceKind kind, int pct) => new()
