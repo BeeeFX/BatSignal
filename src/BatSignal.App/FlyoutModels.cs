@@ -102,10 +102,26 @@ internal sealed class DeviceSettingsModel : INotifyPropertyChanged
     public string CustomName
     {
         get => _customName;
-        set { if (Set(ref _customName, value)) { Notify(nameof(HintVisibility)); Changed?.Invoke(this); } }
+        set { if (Set(ref _customName, value)) Changed?.Invoke(this); }
     }
 
-    public Visibility HintVisibility => _customName.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>
+    /// What the name box shows: the custom name, or the device's own name. Typing the original
+    /// name back, or clearing the box, removes the custom name.
+    /// </summary>
+    public string DisplayName
+    {
+        get => _customName.Length > 0 ? _customName : OriginalName;
+        set
+        {
+            var v = (value ?? "").Trim();
+            CustomName = v.Length == 0 || v == OriginalName ? "" : v;
+            Notify(nameof(DisplayName));
+        }
+    }
+
+    /// <summary>Hidden devices are dimmed in Settings.</summary>
+    public double RowOpacity => _show ? 1.0 : 0.45;
 
     public string EffectiveIconKey => _iconKey ?? DefaultIconKey;
 
@@ -149,7 +165,7 @@ internal sealed class DeviceSettingsModel : INotifyPropertyChanged
     public bool Show
     {
         get => _show;
-        set { if (Set(ref _show, value)) Changed?.Invoke(this); }
+        set { if (Set(ref _show, value)) { Notify(nameof(RowOpacity)); Changed?.Invoke(this); } }
     }
 
     public bool PickerOpen

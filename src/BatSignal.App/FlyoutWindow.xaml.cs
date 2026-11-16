@@ -49,7 +49,7 @@ internal sealed partial class FlyoutWindow
 
         ApplyTheme();
         SourceInitialized += (_, _) => ApplyFrame();
-        Deactivated += (_, _) => HideFlyout();
+        Deactivated += (_, _) => { CommitEdits(); HideFlyout(); };
         SizeChanged += (_, _) => { if (IsVisible) Top = _bottomDip - ActualHeight; };
         PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) HideFlyout(); };
     }
@@ -130,9 +130,27 @@ internal sealed partial class FlyoutWindow
 
     // Event handlers (wired in XAML) -----------------------------------------------------------
 
+    /// <summary>A rename is saved when its box loses focus; closing the panel or going back must save it too.</summary>
+    void CommitEdits()
+    {
+        if (System.Windows.Input.FocusManager.GetFocusedElement(this) is System.Windows.Controls.TextBox box)
+            box.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)?.UpdateSource();
+    }
+
+    void Name_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is not (System.Windows.Input.Key.Enter or System.Windows.Input.Key.Escape)) return;
+        var box = (System.Windows.Controls.TextBox)sender;
+        var binding = box.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty);
+        if (e.Key == System.Windows.Input.Key.Enter) binding?.UpdateSource(); else binding?.UpdateTarget();
+        System.Windows.Input.Keyboard.ClearFocus();
+        System.Windows.Input.FocusManager.SetFocusedElement(this, this);
+        e.Handled = true;
+    }
+
     void Refresh_Click(object sender, RoutedEventArgs e) => RefreshRequested?.Invoke();
     void OpenSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
-    void Back_Click(object sender, RoutedEventArgs e) => ShowDevicesPage();
+    void Back_Click(object sender, RoutedEventArgs e) { CommitEdits(); ShowDevicesPage(); }
     void Exit_Click(object sender, RoutedEventArgs e) => ExitRequested?.Invoke();
     void MoveUp_Click(object sender, RoutedEventArgs e) => Move(sender, -1);
     void MoveDown_Click(object sender, RoutedEventArgs e) => Move(sender, +1);
@@ -180,7 +198,9 @@ internal sealed partial class FlyoutWindow
         UpdateLayout();
 
         var dpi = VisualTreeHelper.GetDpi(this);
+        UpdateLayout();
         var wa = Screen.FromRectangle(anchor).WorkingArea;
+        SettingsScroll.MaxHeight = Math.Max(240, wa.Height / dpi.DpiScaleY - 180); // grow to fit the screen; the wheel scrolls beyond
         double widthPx = ActualWidth * dpi.DpiScaleX;
         double xPx = Math.Clamp(anchor.Right - widthPx, wa.Left + 12 * dpi.DpiScaleX, wa.Right - widthPx - 12 * dpi.DpiScaleX);
         Left = xPx / dpi.DpiScaleX;
@@ -204,7 +224,6 @@ internal sealed partial class FlyoutWindow
     void ApplyTheme()
     {
         var p = Theme.Current;
-        ThemeMode = p.Dark ? ThemeMode.Dark : ThemeMode.Light; // Windows 11 styles for text boxes, combo boxes, check boxes
         Resources["Bs.Background"] = Wpf.Brush(p.Background);
         Resources["Bs.Surface"] = Wpf.Brush(p.Surface);
         Resources["Bs.Hover"] = Wpf.Brush(p.Dark ? Color.FromArgb(0x48, 0x48, 0x48) : Color.FromArgb(0xE2, 0xE2, 0xE2));
@@ -213,6 +232,10 @@ internal sealed partial class FlyoutWindow
         Resources["Bs.Muted"] = Wpf.Brush(p.Muted);
         Resources["Bs.Border"] = Wpf.Brush(p.Border);
         Resources["Bs.Track"] = Wpf.Brush(p.Track);
+        Resources["Bs.Input"] = Wpf.Brush(p.Dark ? Color.FromArgb(0x1F, 0x1F, 0x1F) : Color.White);
+        Resources["Bs.InputBorder"] = Wpf.Brush(p.Dark ? Color.FromArgb(0x55, 0x55, 0x55) : Color.FromArgb(0xC8, 0xC8, 0xC8));
+        Resources["Bs.Accent"] = Wpf.Brush(Theme.Accent(p.Dark));
+        Resources["Bs.OnAccent"] = Wpf.Brush(p.Dark ? Color.Black : Color.White);
         if (IsLoaded) ApplyFrame();
     }
 

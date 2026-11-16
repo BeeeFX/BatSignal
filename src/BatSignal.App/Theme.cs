@@ -38,6 +38,21 @@ internal static class Theme
         }
     }
 
+    /// <summary>The Windows accent color, in the shade Windows uses for controls in this theme.</summary>
+    public static Color Accent(bool dark)
+    {
+        try
+        {
+            var c = new Windows.UI.ViewManagement.UISettings().GetColorValue(
+                dark ? Windows.UI.ViewManagement.UIColorType.AccentLight2 : Windows.UI.ViewManagement.UIColorType.AccentDark1);
+            return Color.FromArgb(c.A, c.R, c.G, c.B);
+        }
+        catch
+        {
+            return dark ? Color.FromArgb(0x99, 0xEB, 0xFF) : Color.FromArgb(0x00, 0x5F, 0xB8);
+        }
+    }
+
     public static Color LevelColor(this Palette p, int percent, int threshold) =>
         percent <= threshold ? p.Low : percent <= Math.Max(30, threshold + 10) ? p.Warn : p.Good;
 

@@ -120,6 +120,137 @@
       </Setter>
     </Style>
 
+    <!-- Text that looks like a label until hovered or focused (device names), or a normal field (labels) -->
+    <Style x:Key="InlineText" TargetType="TextBox">
+      <Setter Property="Foreground" Value="{DynamicResource Bs.Text}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource Bs.Text}" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource Bs.Accent}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Padding" Value="3,3" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1" CornerRadius="5">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"
+                            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Bs.InputBorder}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Bs.Input}" />
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Bs.Accent}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Field" TargetType="TextBox" BasedOn="{StaticResource InlineText}">
+      <Setter Property="Background" Value="{DynamicResource Bs.Input}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Bs.InputBorder}" />
+    </Style>
+
+    <!-- On/off switch -->
+    <Style x:Key="Switch" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Background="Transparent">
+              <Border x:Name="Track" Width="40" Height="20" CornerRadius="10" BorderThickness="1"
+                      BorderBrush="{DynamicResource Bs.Secondary}" Background="Transparent" />
+              <Ellipse x:Name="Knob" Width="12" Height="12" Fill="{DynamicResource Bs.Secondary}"
+                       HorizontalAlignment="Left" Margin="4,0,0,0" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Knob" Property="Width" Value="14" />
+                <Setter TargetName="Knob" Property="Height" Value="14" />
+                <Setter TargetName="Knob" Property="Margin" Value="3,0,0,0" />
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Track" Property="Background" Value="{DynamicResource Bs.Accent}" />
+                <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Bs.Accent}" />
+                <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource Bs.OnAccent}" />
+                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                <Setter TargetName="Knob" Property="Margin" Value="0,0,4,0" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Drop-down list -->
+    <Style x:Key="Combo" TargetType="ComboBox">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Foreground" Value="{DynamicResource Bs.Text}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="ItemContainerStyle">
+        <Setter.Value>
+          <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource Bs.Text}" />
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                  <Border x:Name="Bd" CornerRadius="4" Padding="10,6" Background="Transparent">
+                    <ContentPresenter />
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                      <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Bs.Surface}" />
+                    </Trigger>
+                    <Trigger Property="IsHighlighted" Value="True">
+                      <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Bs.Hover}" />
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton Focusable="False" ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" Background="{DynamicResource Bs.Input}" BorderBrush="{DynamicResource Bs.InputBorder}"
+                            BorderThickness="1" CornerRadius="5">
+                      <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="10" Margin="0,0,10,0"
+                                 HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource Bs.Secondary}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Bs.Hover}" />
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <ContentPresenter IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}"
+                                Margin="11,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left" />
+              <Popup Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
+                     Focusable="False" PopupAnimation="Fade">
+                <Border Background="{DynamicResource Bs.Background}" BorderBrush="{DynamicResource Bs.Border}" BorderThickness="1"
+                        CornerRadius="6" Padding="4" Margin="0,4,0,0"
+                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                  <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
+                </Border>
+              </Popup>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- "Icon | Text label" segmented choice -->
     <Style x:Key="Segment" TargetType="RadioButton">
       <Setter Property="Cursor" Value="Hand" />
@@ -218,13 +349,15 @@
         </Grid>
       </Border>
 
-      <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" MaxHeight="520" Margin="6,0,0,0">
+      <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Hidden" MaxHeight="700" Margin="6,0,0,0">
         <StackPanel Margin="0,0,2,0">
-          <TextBlock Text="Devices" Style="{StaticResource Section}" Margin="2,4,0,6" />
+          <TextBlock Text="Devices" Style="{StaticResource Section}" Margin="2,4,0,2" />
+          <TextBlock Style="{StaticResource Caption}" Margin="2,0,0,8" TextWrapping="Wrap"
+                     Text="Click a name to rename it, or an icon to change it. The switch shows or hides a device." />
           <ItemsControl x:Name="CustomizeList">
             <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Border Background="{DynamicResource Bs.Surface}" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                <Border Background="{DynamicResource Bs.Surface}" CornerRadius="8" Padding="8,8,10,8" Margin="0,0,0,6">
                   <StackPanel>
                     <Grid>
                       <Grid.ColumnDefinitions>
@@ -233,24 +366,23 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                       </Grid.ColumnDefinitions>
-                      <ToggleButton Style="{StaticResource MarkToggle}" IsChecked="{Binding PickerOpen}" ToolTip="Change icon" VerticalAlignment="Top">
+                      <ToggleButton Style="{StaticResource MarkToggle}" IsChecked="{Binding PickerOpen}" ToolTip="Change icon"
+                                    Opacity="{Binding RowOpacity}">
                         <TextBlock Text="{Binding Mark}" FontFamily="{Binding MarkFont}" FontSize="{Binding MarkSize}" FontWeight="{Binding MarkWeight}"
                                    Foreground="{DynamicResource Bs.Text}" />
                       </ToggleButton>
-                      <StackPanel Grid.Column="1" Margin="10,0,6,0" VerticalAlignment="Center">
-                        <Grid>
-                          <TextBox Text="{Binding CustomName, UpdateSourceTrigger=PropertyChanged}" MaxLength="40" ToolTip="Display name" />
-                          <TextBlock Text="{Binding OriginalName}" IsHitTestVisible="False" Foreground="{DynamicResource Bs.Muted}"
-                                     Margin="11,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                     Visibility="{Binding HintVisibility}" />
-                        </Grid>
-                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" Margin="2,4,0,0" />
+                      <StackPanel Grid.Column="1" Margin="4,0,6,0" VerticalAlignment="Center" Opacity="{Binding RowOpacity}">
+                        <TextBox Style="{StaticResource InlineText}" Text="{Binding DisplayName, UpdateSourceTrigger=LostFocus}"
+                                 MaxLength="40" ToolTip="Click to rename" KeyDown="Name_KeyDown" />
+                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" Margin="9,0,0,0" TextTrimming="CharacterEllipsis" />
                       </StackPanel>
-                      <CheckBox Grid.Column="2" IsChecked="{Binding Show}" Content="Show" MinWidth="0" VerticalAlignment="Top" Margin="0,6,0,0"
-                                ToolTip="Show this device on the taskbar and in this panel" />
-                      <StackPanel Grid.Column="3" VerticalAlignment="Top" Margin="2,0,0,0">
-                        <Button Style="{StaticResource GhostIconButton}" Width="24" Height="20" FontSize="10" Content="&#xE70E;" ToolTip="Move up" Click="MoveUp_Click" />
-                        <Button Style="{StaticResource GhostIconButton}" Width="24" Height="20" FontSize="10" Content="&#xE70D;" ToolTip="Move down" Click="MoveDown_Click" />
+                      <CheckBox Grid.Column="2" Style="{StaticResource Switch}" IsChecked="{Binding Show}" VerticalAlignment="Center"
+                                ToolTip="Show on the taskbar and in this panel" />
+                      <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="6,0,-4,0">
+                        <Button Style="{StaticResource GhostIconButton}" Width="22" Height="18" FontSize="9" Content="&#xE70E;"
+                                Foreground="{DynamicResource Bs.Muted}" ToolTip="Move up" Click="MoveUp_Click" />
+                        <Button Style="{StaticResource GhostIconButton}" Width="22" Height="18" FontSize="9" Content="&#xE70D;"
+                                Foreground="{DynamicResource Bs.Muted}" ToolTip="Move down" Click="MoveDown_Click" />
                       </StackPanel>
                     </Grid>
 
@@ -272,7 +404,8 @@
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
                       <StackPanel Orientation="Horizontal" Visibility="{Binding LabelPanelVisibility}" Margin="0,0,0,6">
-                        <TextBox Width="80" MaxLength="4" CharacterCasing="Upper" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBox Style="{StaticResource Field}" Width="80" MaxLength="4" CharacterCasing="Upper"
+                                 Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Style="{StaticResource Caption}" Text="Up to 4 characters, shown instead of an icon" Margin="8,0,0,0"
                                    VerticalAlignment="Center" TextWrapping="Wrap" Width="170" />
                       </StackPanel>
@@ -286,22 +419,24 @@
           </ItemsControl>
 
           <TextBlock Text="General" Style="{StaticResource Section}" />
-          <Border Background="{DynamicResource Bs.Surface}" CornerRadius="8" Padding="12,6">
+          <Border Background="{DynamicResource Bs.Surface}" CornerRadius="8" Padding="12,4">
             <StackPanel>
-              <Grid Margin="0,4">
+              <Grid Margin="0,6">
                 <TextBlock Text="Show battery in" VerticalAlignment="Center" />
-                <ComboBox x:Name="ModeBox" HorizontalAlignment="Right" Width="180" SelectionChanged="Mode_Changed">
+                <ComboBox x:Name="ModeBox" Style="{StaticResource Combo}" HorizontalAlignment="Right" Width="170" SelectionChanged="Mode_Changed">
                   <ComboBoxItem Content="Taskbar" />
                   <ComboBoxItem Content="Notification area" />
                 </ComboBox>
               </Grid>
-              <Grid Margin="0,4">
+              <Border Height="1" Background="{DynamicResource Bs.Border}" />
+              <Grid Margin="0,6">
                 <TextBlock Text="Low-battery alert" VerticalAlignment="Center" />
-                <ComboBox x:Name="AlertBox" HorizontalAlignment="Right" Width="180" SelectionChanged="Alert_Changed" />
+                <ComboBox x:Name="AlertBox" Style="{StaticResource Combo}" HorizontalAlignment="Right" Width="170" SelectionChanged="Alert_Changed" />
               </Grid>
-              <Grid Margin="0,4">
+              <Border Height="1" Background="{DynamicResource Bs.Border}" />
+              <Grid Margin="0,10">
                 <TextBlock Text="Start with Windows" VerticalAlignment="Center" />
-                <CheckBox x:Name="AutostartBox" HorizontalAlignment="Right" MinWidth="0" Click="Autostart_Click" />
+                <CheckBox x:Name="AutostartBox" Style="{StaticResource Switch}" HorizontalAlignment="Right" Click="Autostart_Click" />
               </Grid>
             </StackPanel>
           </Border>
