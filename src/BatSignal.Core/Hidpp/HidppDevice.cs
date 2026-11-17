@@ -91,6 +91,20 @@ public sealed class HidppDevice(HidppChannel channel, byte index)
         return Encoding.UTF8.GetString(bytes.ToArray()).Trim();
     }
 
+    public const ushort FeatureDeviceInformation = 0x0003;
+
+    /// <summary>
+    /// The device's unit id (feature 0x0003): the same whether it's on a receiver, a cable or
+    /// another receiver, so one physical device can be recognised across connections.
+    /// </summary>
+    public string? GetUnitId()
+    {
+        if (!Has(FeatureDeviceInformation)) return null;
+        var r = Call(FeatureDeviceInformation, 0); // [entityCount, unitId x4, transport x2, modelId x6, ...]
+        var unit = r.AsSpan(1, 4);
+        return unit.IndexOfAnyExcept((byte)0) < 0 ? null : Convert.ToHexString(unit);
+    }
+
     public DeviceKind GetKind()
     {
         if (!Has(FeatureDeviceName)) return DeviceKind.Unknown;

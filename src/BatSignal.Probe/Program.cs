@@ -98,7 +98,9 @@ foreach (var ep in endpoints)
             var kind = dev.GetKind();
             var features = new[] { HidppDevice.FeatureUnifiedBattery, HidppDevice.FeatureBatteryStatus, HidppDevice.FeatureBatteryVoltage }
                 .Where(dev.Has).Select(f => $"0x{f:X4}");
-            Console.WriteLine($"   [{slot}] {name} ({kind}) HID++ {version}, battery features: {string.Join(", ", features).DefaultIfEmpty("none")}");
+            string unit = "?";
+            try { unit = dev.GetUnitId() ?? "none"; } catch { }
+            Console.WriteLine($"   [{slot}] {name} ({kind}) HID++ {version}, unit {unit}, battery features: {string.Join(", ", features).DefaultIfEmpty("none")}");
 
             var b = dev.ReadBattery();
             if (b is null) Console.WriteLine("       no battery reading");

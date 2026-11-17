@@ -15,6 +15,9 @@ public sealed record DeviceSnapshot
     public bool Online { get; init; }
     public DateTimeOffset? LastSeen { get; init; }
 
+    /// <summary>Identifies the physical device across connections (Logitech unit id), when known.</summary>
+    public string? HardwareId { get; init; }
+
     // Set by the UI from the user's customization; never persisted with the readings.
 
     /// <summary>The device's own name, when the user renamed it.</summary>

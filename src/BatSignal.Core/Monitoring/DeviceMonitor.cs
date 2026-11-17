@@ -38,6 +38,8 @@ public sealed class DeviceMonitor : IDisposable
         _charging = new ChargeEstimator(chargeRates);
         foreach (var d in cached ?? [])
         {
+            // Before 0.1.3, a device on its cable got a separate "/direct" entry with no unit id.
+            if (d.Id.EndsWith("/direct", StringComparison.Ordinal) && d.HardwareId is null) continue;
             // Versions before 0.1.1 saved "0 % while charging" for devices that stop reporting
             // a level on charge; that 0 means unknown.
             var battery = d.Battery is { Percent: 0, State: ChargeState.Charging, IsEstimate: false } ? null : d.Battery;
@@ -99,7 +101,7 @@ public sealed class DeviceMonitor : IDisposable
         }
 
         var seen = new HashSet<string>();
-        foreach (var state in _endpoints.Values.ToList())
+        foreach (var state in _endpoints.Values.OrderByDescending(s => s.IsDirect == true).ToList())
         {
             try { ScanEndpoint(state, seen); }
             catch (Exception e)
@@ -126,6 +128,31 @@ public sealed class DeviceMonitor : IDisposable
         lock (_lock)
             foreach (var id in _devices.Keys.Where(id => !seen.Contains(id)).ToList())
                 _devices[id] = _devices[id] with { Online = false };
+    }
+
+    /// <summary>
+    /// One physical device keeps one entry across connections. A device on its cable is filed
+    /// under its receiver entry (so its name, icon, history and charge speed carry over); a
+    /// device first seen on a cable moves to its receiver entry once it shows up there.
+    /// </summary>
+    string CanonicalId(string id, string? unitId, bool direct, string name)
+    {
+        if (unitId is null) return id;
+        lock (_lock)
+        {
+            var same = _devices.Values.FirstOrDefault(d => d.HardwareId == unitId && d.Id != id)
+                       // Entries saved before unit ids existed: same name on a receiver.
+                       ?? (direct ? _devices.Values.FirstOrDefault(d => d.HardwareId is null && d.Name == name
+                                                                       && !d.Id.EndsWith("/direct", StringComparison.Ordinal)) : null);
+            if (same is null) return id;
+            bool otherDirect = same.Id.EndsWith("/direct", StringComparison.Ordinal);
+            if (!direct && otherDirect)
+            {
+                _devices.Remove(same.Id);
+                return id;
+            }
+            return same.Id;
+        }
     }
 
     IReadOnlyList<DeviceSnapshot> ScanProvider(IBatteryProvider provider)
@@ -168,11 +195,18 @@ public sealed class DeviceMonitor : IDisposable
             {
                 if (!state.Identity.TryGetValue(idx, out var ident))
                 {
-                    ident = (dev.GetName() ?? $"Device {idx}", dev.GetKind());
+                    string? unitId = null;
+                    try { unitId = dev.GetUnitId(); } catch (Exception e) when (e is HidppException or TimeoutException) { }
+                    ident = (dev.GetName() ?? $"Device {idx}", dev.GetKind(), unitId);
                     state.Identity[idx] = ident;
                 }
                 var battery = dev.ReadBattery();
                 if (dev.BatteryFeatureIndex is byte bi) state.BatteryFeature[idx] = bi;
+
+                bool direct = idx == 0xFF;
+                id = CanonicalId(id, ident.UnitId, direct, ident.Name);
+                // A cable reading (scanned first) is fresher than the same device over its receiver.
+                if (!direct && seen.Contains(id)) continue;
 
                 lock (_lock)
                 {
@@ -182,7 +216,8 @@ public sealed class DeviceMonitor : IDisposable
                         Id = id,
                         Name = ident.Name,
                         Kind = ident.Kind,
-                        Connection = state.Connection,
+                        HardwareId = ident.UnitId,
+                        Connection = direct ? "USB cable" : state.Connection,
                         Battery = _charging.Apply(id, battery, previous?.Battery, DateTimeOffset.Now),
                         Online = true,
                         LastSeen = DateTimeOffset.Now,
@@ -244,7 +279,7 @@ public sealed class DeviceMonitor : IDisposable
         public HidppChannel Channel { get; } = channel;
         public bool? IsDirect { get; set; }
         public Dictionary<byte, HidppDevice> Devices { get; } = new();
-        public Dictionary<byte, (string Name, DeviceKind Kind)> Identity { get; } = new();
+        public Dictionary<byte, (string Name, DeviceKind Kind, string? UnitId)> Identity { get; } = new();
         // Read by the HID reader thread, written by the monitor thread: replace-only access is fine for our use.
         public System.Collections.Concurrent.ConcurrentDictionary<byte, byte> BatteryFeature { get; } = new();
 
